@@ -89,18 +89,22 @@ work in the same space.
 
 ## Campaign regions
 
-The game is played one region at a time (`src/config/campaign.json`):
-**Forks → Tacoma → Pierce County → Seattle → King County → Olympia → Thurston County**.
+The game is played one region at a time (`src/config/campaign.json`), along real highways:
+- **Coast** (US-101 / US-12): Forks → Montesano → Olympia
+- **I-5 North:** Tacoma → Seattle → Everett → Mount Vernon → Bellingham
+- **I-5 South:** Centralia → Longview → Vancouver
+
 Forks is the tutorial: a small, isolated town with a small outbreak, so the pace
 can build and the systems can be taught before the scale ramps up.
 
 A region is the real boundary (city limits or county, from the pack) plus a
 margin, rasterized to a mask (`src/campaign/region.ts`). The mask decides which
 chunks to generate, and the worker uses it to trim content to the region.
-- **Towns and cities** (≤ 500 chunks: Forks 73, Olympia 123, Tacoma 243,
-  Seattle 481) are generated whole at load, nearest first, and drawn as 4×4-chunk
+- **Towns and cities** (≤ 500 chunks: Forks 73, Montesano 109, Olympia 123,
+  Tacoma 243, Seattle 481; every stage on the route fits) are generated whole at load, nearest first, and drawn as 4×4-chunk
   merged layers. They take about 6–15 s after the pack loads.
-- **Counties** (2,000–6,000 chunks) stream by view, limited to the county.
+- **Counties** (2,000–6,000 chunks) are supported (`"kind": "county"`) and
+  stream by view, limited to the county. None are on the route right now.
 - **Only the region's geography is drawn in detail.** Land, water and streams
   are clipped around the region; outside it the dim 1:500k map shows.
   Triangulating the full-state tactical land polygon (305k vertices, hundreds of

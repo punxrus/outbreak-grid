@@ -204,7 +204,11 @@ function Game({ pack }: { pack: RegionPack }) {
         <div className="stat">
           <label>REGION</label>
           <select className="stage" value={stage.id} onChange={(e) => setStage(stageById(e.target.value))} title="Campaign region (dev: all unlocked)">
-            {STAGES.map((st, i) => <option key={st.id} value={st.id}>{i + 1}. {st.label}</option>)}
+            {[...new Set(STAGES.map((st) => st.leg))].map((leg) => (
+              <optgroup key={leg} label={leg}>
+                {STAGES.map((st, i) => (st.leg === leg ? <option key={st.id} value={st.id}>{i + 1}. {st.label}</option> : null))}
+              </optgroup>
+            ))}
           </select>
         </div>
         <div className={`stat lod ${lod}`}>

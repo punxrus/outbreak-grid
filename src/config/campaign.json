@@ -1,12 +1,16 @@
 {
   "stages": [
-    { "id": "forks", "label": "Forks", "kind": "place", "name": "Forks", "marginMeters": 1500 },
-    { "id": "tacoma", "label": "Tacoma", "kind": "place", "name": "Tacoma", "marginMeters": 500 },
-    { "id": "pierce", "label": "Pierce County", "kind": "county", "name": "Pierce", "marginMeters": 0 },
-    { "id": "seattle", "label": "Seattle", "kind": "place", "name": "Seattle", "marginMeters": 500 },
-    { "id": "king", "label": "King County", "kind": "county", "name": "King", "marginMeters": 0 },
-    { "id": "olympia", "label": "Olympia", "kind": "place", "name": "Olympia", "marginMeters": 800 },
-    { "id": "thurston", "label": "Thurston County", "kind": "county", "name": "Thurston", "marginMeters": 0 }
+    { "id": "forks", "label": "Forks", "leg": "Coast", "kind": "place", "name": "Forks", "marginMeters": 1500 },
+    { "id": "montesano", "label": "Montesano", "leg": "Coast", "kind": "place", "name": "Montesano", "marginMeters": 1500 },
+    { "id": "olympia", "label": "Olympia", "leg": "Coast", "kind": "place", "name": "Olympia", "marginMeters": 800 },
+    { "id": "tacoma", "label": "Tacoma", "leg": "I-5 North", "kind": "place", "name": "Tacoma", "marginMeters": 500 },
+    { "id": "seattle", "label": "Seattle", "leg": "I-5 North", "kind": "place", "name": "Seattle", "marginMeters": 500 },
+    { "id": "everett", "label": "Everett", "leg": "I-5 North", "kind": "place", "name": "Everett", "marginMeters": 500 },
+    { "id": "mount-vernon", "label": "Mount Vernon", "leg": "I-5 North", "kind": "place", "name": "Mount Vernon", "marginMeters": 800 },
+    { "id": "bellingham", "label": "Bellingham", "leg": "I-5 North", "kind": "place", "name": "Bellingham", "marginMeters": 800 },
+    { "id": "centralia", "label": "Centralia", "leg": "I-5 South", "kind": "place", "name": "Centralia", "marginMeters": 1500 },
+    { "id": "longview", "label": "Longview", "leg": "I-5 South", "kind": "place", "name": "Longview", "marginMeters": 800 },
+    { "id": "vancouver", "label": "Vancouver", "leg": "I-5 South", "kind": "place", "name": "Vancouver", "marginMeters": 500 }
   ],
   "pregenMaxChunks": 500,
   "displayMarginMeters": 8000,
