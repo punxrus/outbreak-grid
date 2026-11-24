@@ -2,43 +2,37 @@ import type { Layer } from '@deck.gl/core';
 import { PathStyleExtension } from '@deck.gl/extensions';
 import { PathLayer, PolygonLayer, TextLayer } from '@deck.gl/layers';
 import RENDER from '../config/render.json';
-import { Wire, type WireChunk } from '../procgen/wire';
-import { hex, type RGBA } from './color';
+import type { WireChunk } from '../procgen/wire';
+import { hex } from './color';
+import { declutter } from './labels';
 
 const W = RENDER.wire;
+const L = RENDER.labels;
 const dash = new PathStyleExtension({ dash: true });
-const [aLo, aHi] = W.buildingAlpha as [number, number];
-
-const LINE_COLOR: Record<Wire, RGBA> = {
-  [Wire.Block]: hex(W.block, 210),
-  [Wire.Building]: hex(W.building, aHi),
-  [Wire.Park]: hex(W.park, 200),
-  [Wire.Forest]: hex(W.forest, 220),
-  [Wire.Landmark]: hex(W.landmark, 255),
-};
-const LINE_WIDTH: Record<Wire, number> = {
-  [Wire.Block]: W.widthPx.block,
-  [Wire.Building]: W.widthPx.building,
-  [Wire.Park]: W.widthPx.park,
-  [Wire.Forest]: W.widthPx.forest,
-  [Wire.Landmark]: W.widthPx.landmark,
-};
 
 const LANDMARK_TEXT: Record<string, string> = {
-  hospital: '+ HOSP', police: 'POLICE', gas_station: 'FUEL', armory: 'ARMORY', school: 'SCHOOL',
-  radio_tower: 'RADIO', helipad: 'H', ferry_terminal: 'FERRY',
+  hospital: '+ HOSPITAL', police: 'POLICE', gas_station: 'FUEL', armory: 'ARMORY', school: 'SCHOOL',
+  radio_tower: 'RADIO', helipad: 'HELIPAD', ferry_terminal: 'FERRY',
 };
 
-type Line = WireChunk['lines'][number];
 type Road = WireChunk['roads'][number];
+type Landmark = WireChunk['landmarks'][number];
+
+/** Which label wins when two overlap (gameplay value first). */
+const PRIORITY: Record<string, number> = {
+  hospital: 0, armory: 1, police: 2, helipad: 3, ferry_terminal: 4, radio_tower: 5, gas_station: 6, school: 7,
+};
 
 /**
- * Wireframe layers for generated chunks. One layer set per chunk, so deck.gl
- * keeps GPU buffers for chunks that stay on screen.
+ * Wireframe layers for generated chunks. One layer set per chunk with stable
+ * data references, so deck.gl keeps GPU buffers for chunks that stay on screen
+ * and only uploads the new ones. Outlines arrive as binary buffers from the
+ * worker: no per-path JS objects on the main thread.
  */
-export function buildProcLayers(chunks: WireChunk[], opts: { districts: boolean; zoom: number }): Layer[] {
+export function buildProcLayers(chunks: WireChunk[], opts: { districts: boolean; showLabels: boolean; zoom: number }): Layer[] {
   const layers: Layer[] = [];
   for (const c of chunks) {
+    const lines = c.lines;
     layers.push(
       new PathLayer<Road>({
         id: `pg-road-${c.key}`,
@@ -46,7 +40,7 @@ export function buildProcLayers(chunks: WireChunk[], opts: { districts: boolean;
         getPath: (d: Road) => d.path,
         getColor: (d: Road) => d.kind === 'ferry' ? hex(W.ferry, 200) : d.kind === 'bridge' ? hex(d.chokepoint ? W.chokepoint : W.bridge, 230)
           : d.kind === 'arterial' ? hex(W.arterial, 150) : hex(W.collector, 120),
-        // bridges are drawn at deck width; road centerlines as thin dashed guides
+        // bridges at deck width; road centerlines as thin dashed guides
         getWidth: (d: Road) => (d.kind === 'bridge' ? d.width : d.kind === 'ferry' ? 3 : 1.2),
         widthUnits: 'meters',
         widthMinPixels: 1,
@@ -54,17 +48,24 @@ export function buildProcLayers(chunks: WireChunk[], opts: { districts: boolean;
         dashJustified: false,
         extensions: [dash],
       } as never),
-      new PathLayer<Line>({
+      new PathLayer({
         id: `pg-wire-${c.key}`,
-        data: c.lines,
-        getPath: (d) => d.path,
-        getColor: (d) => d.cls === Wire.Building ? withAlpha(LINE_COLOR[Wire.Building], aLo + (aHi - aLo) * d.shade) : LINE_COLOR[d.cls],
-        getWidth: (d) => LINE_WIDTH[d.cls],
+        data: {
+          length: lines.length,
+          startIndices: lines.startIndices,
+          attributes: {
+            getPath: { value: lines.positions, size: 2 },
+            getColor: { value: lines.colors, size: 4, normalized: true },
+            getWidth: { value: lines.widths, size: 1 },
+          },
+        },
+        _pathType: 'open',
+        positionFormat: 'XY',
         widthUnits: 'pixels',
         jointRounded: false,
         capRounded: false,
         miterLimit: 2,
-      }),
+      } as never),
     );
     if (opts.districts) {
       layers.push(
@@ -75,26 +76,32 @@ export function buildProcLayers(chunks: WireChunk[], opts: { districts: boolean;
           filled: true,
           stroked: false,
           getFillColor: (d) => hex((W.districtDebug as Record<string, string>)[d.type] ?? '#ffffff', 38),
-          }),
+        }),
       );
     }
   }
-  const lms = chunks.flatMap((c) => c.landmarks);
+  const all = chunks.flatMap((c) => c.landmarks).sort((a, b) => (PRIORITY[a.type] ?? 9) - (PRIORITY[b.type] ?? 9));
+  const lms = opts.showLabels
+    ? declutter(all.map((d) => ({ item: d, x: d.x, y: d.y, text: LANDMARK_TEXT[d.type] ?? d.type, anchor: 'middle' as const, size: L.landmarkSizePx + 4 })), opts.zoom).map((k) => k.item)
+    : [];
   layers.push(
-    new TextLayer<(typeof lms)[number]>({
+    new TextLayer<Landmark>({
       id: 'pg-landmarks',
       data: lms,
       getPosition: (d) => [d.x, d.y],
       getText: (d) => LANDMARK_TEXT[d.type] ?? d.type,
-      getColor: hex(W.landmark, 240),
-      getSize: 11,
-      fontFamily: RENDER.labels.font,
+      getColor: hex(W.landmark, 255),
+      getSize: L.landmarkSizePx,
+      fontFamily: L.font,
       fontWeight: 700,
       characterSet: 'auto',
-      fontSettings: { sdf: true },
-      outlineWidth: 3,
-      outlineColor: hex(RENDER.colors.land, 255),
-      visible: opts.zoom >= -1.6,
+      // solid label plates: text stays readable on top of the dense wireframe
+      background: true,
+      getBackgroundColor: hex(L.plate, 235),
+      getBorderColor: hex(W.landmark, 200),
+      getBorderWidth: 1,
+      backgroundPadding: [5, 3, 5, 2],
+      visible: opts.showLabels,
     }),
   );
   if (opts.districts) {
@@ -111,5 +118,3 @@ export function buildProcLayers(chunks: WireChunk[], opts: { districts: boolean;
   }
   return layers;
 }
-
-const withAlpha = (c: RGBA, a: number): RGBA => [c[0], c[1], c[2], Math.round(a)];

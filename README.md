@@ -135,7 +135,12 @@ edge meets its neighbor to the millimeter. What makes it work:
    road graph with real intersections, T-junction snapping, edge kind, length,
    chokepoint flag, and border nodes for stitching chunks together.
 8. **Generation moved into workers now** instead of waiting for M3: on the
-   main thread, a 100–250 ms chunk would freeze the UI.
+   main thread, a 100–250 ms chunk would freeze the UI. Outlines come back as
+   transferable typed arrays (deck.gl binary PathLayer input). Layers rebuild
+   only when the visible chunk set changes; there are 2 workers and a 200-chunk cache.
+9. **Labels for legibility**: 14–17 px bold, solid plates under landmark and
+   tactical city labels, landmark declutter by gameplay priority, and larger,
+   higher-contrast HUD text.
 
 ## Known issues / risks
 

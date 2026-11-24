@@ -3,7 +3,7 @@ import PROCGEN from '../config/procgen.json';
 import { RegionPack } from '../geo/pack';
 import { generateChunk } from './chunk';
 import { GeoContext } from './context';
-import { chunkWire } from './wire';
+import { chunkWire, wireTransferables } from './wire';
 
 export type WorkerIn = { type: 'init'; state: string; seed: number } | { type: 'gen'; cx: number; cy: number };
 export type WorkerOut =
@@ -13,7 +13,7 @@ export type WorkerOut =
 
 let ctx: GeoContext | null = null;
 const queue: WorkerIn[] = [];
-const post = (m: WorkerOut) => (self as unknown as DedicatedWorkerGlobalScope).postMessage(m);
+const post = (m: WorkerOut, transfer: Transferable[] = []) => (self as unknown as DedicatedWorkerGlobalScope).postMessage(m, transfer);
 
 self.onmessage = async (e: MessageEvent<WorkerIn>) => {
   const msg = e.data;
@@ -39,7 +39,7 @@ function run(msg: WorkerIn) {
   try {
     const c = generateChunk(ctx, msg.cx, msg.cy);
     const wire = chunkWire(c);
-    post({ type: 'chunk', cx: msg.cx, cy: msg.cy, wire });
+    post({ type: 'chunk', cx: msg.cx, cy: msg.cy, wire }, wireTransferables(wire));
   } catch (err) {
     post({ type: 'error', message: `chunk ${msg.cx},${msg.cy}: ${(err as Error).message}` });
   }

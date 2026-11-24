@@ -10,8 +10,8 @@
     "countyLine": "#6f8196",
     "cityLimit": "#4fb3c9",
     "stateLine": "#9fb0c3",
-    "labelCounty": "#8a9bb0",
-    "labelPlace": "#c9d6e3",
+    "labelCounty": "#a9b9cc",
+    "labelPlace": "#e6eef6",
     "labelNeighbor": "#4b5566",
     "safeZone": "#2fe6ff",
     "zombieGreen": "#39ff14",
@@ -52,8 +52,11 @@
   },
   "labels": {
     "font": "Consolas, Cascadia Mono, Segoe UI Mono, monospace",
-    "countySizePx": 12,
-    "placeSizePx": 12,
+    "countySizePx": 13,
+    "placeSizePx": 14,
+    "landmarkSizePx": 14,
+    "landmarkMinZoom": -1.6,
+    "plate": "#0a101a",
     "placeMinPopByZoom": [[-9.5, 80000], [-8.5, 30000], [-7.5, 8000], [-6.5, 2500], [-5.5, 600], [-4, 0]]
   },
   "lines": {

@@ -61,10 +61,15 @@ function Game({ pack }: { pack: RegionPack }) {
     if (procgenOn) setTooWide(!store.setView(viewRect));
     else { store.setView([0, 0, -1, -1]); setTooWide(false); }
   }, [viewRect, procgenOn, store]);
-  const zoomBucket = Math.round(zoom * 4) / 4;
+  // Rebuild generated-city layers only when the drawable chunk set or a toggle
+  // changes. Panning alone must not recreate ~160 layers every frame.
+  const visibleKey = procgenOn && store ? store.visibleKey() : '';
+  const showLandmarks = zoom >= RENDER.labels.landmarkMinZoom;
+  const labelZoom = Math.round(zoom * 2) / 2; // landmark declutter only on half-zoom steps
   const procLayers = useMemo(
-    () => (procgenOn && store ? buildProcLayers(store.visible(), { districts: showDistricts, zoom: zoomBucket }) : []),
-    [procgenOn, chunkVersion, viewRect, showDistricts, zoomBucket, store],
+    () => (procgenOn && store ? buildProcLayers(store.visible(), { districts: showDistricts, showLabels: showLandmarks, zoom: labelZoom }) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- visibleKey captures store.visible()
+    [procgenOn, visibleKey, showDistricts, showLandmarks, labelZoom, store],
   );
 
   // Lazy-load the fine LOD the first time it is needed.

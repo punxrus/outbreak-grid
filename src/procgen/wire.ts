@@ -1,3 +1,4 @@
+import RENDER from '../config/render.json';
 import type { Pt, Rect, Ring } from './geom';
 import type { ChunkData, DistrictType, LandmarkType, RoadKind } from './types';
 
@@ -5,16 +6,68 @@ import type { ChunkData, DistrictType, LandmarkType, RoadKind } from './types';
 export const Wire = { Block: 0, Building: 1, Park: 2, Forest: 3, Landmark: 4 } as const;
 export type Wire = (typeof Wire)[keyof typeof Wire];
 
+/**
+ * Flat, transferable path set for deck.gl's binary PathLayer input:
+ * positions are x,y float32 pairs (meters; float32-safe within the state),
+ * startIndices mark where each path begins (in vertices).
+ */
+export interface PathBuffers {
+  length: number;
+  startIndices: Uint32Array;
+  positions: Float32Array;
+  colors: Uint8Array; // RGBA per vertex
+  widths: Float32Array; // per vertex
+}
+
 export interface WireChunk {
   key: string;
   rect: Rect;
-  /** Outline polylines with chunk-border segments removed, so seams never show. */
-  lines: { path: Pt[]; cls: Wire; shade: number }[];
-  /** Road features drawn in meters: bridges, ferries, arterial/collector centerlines. */
+  /** Outlines in pixel widths, chunk-border segments removed so seams never show. */
+  lines: PathBuffers;
+  /** Bridges, ferries, road centerlines; few, so kept as objects (dash styling). */
   roads: { path: Pt[]; kind: RoadKind; width: number; chokepoint: boolean }[];
   landmarks: { x: number; y: number; type: LandmarkType }[];
   districts: { ring: Ring; type: DistrictType }[];
   stats: ChunkData['stats'];
+}
+
+const W = RENDER.wire;
+const rgb = (h: string): [number, number, number] => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+const STYLE: Record<Wire, { rgb: [number, number, number]; a: number; w: number }> = {
+  [Wire.Block]: { rgb: rgb(W.block), a: 210, w: W.widthPx.block },
+  [Wire.Building]: { rgb: rgb(W.building), a: W.buildingAlpha[1]!, w: W.widthPx.building },
+  [Wire.Park]: { rgb: rgb(W.park), a: 200, w: W.widthPx.park },
+  [Wire.Forest]: { rgb: rgb(W.forest), a: 220, w: W.widthPx.forest },
+  [Wire.Landmark]: { rgb: rgb(W.landmark), a: 255, w: W.widthPx.landmark },
+};
+
+function packPaths(paths: { path: Pt[]; cls: Wire; shade: number }[]): PathBuffers {
+  let verts = 0;
+  for (const p of paths) verts += p.path.length;
+  const startIndices = new Uint32Array(paths.length);
+  const positions = new Float32Array(verts * 2);
+  const colors = new Uint8Array(verts * 4);
+  const widths = new Float32Array(verts);
+  let v = 0;
+  const [aLo, aHi] = W.buildingAlpha as [number, number];
+  paths.forEach((p, i) => {
+    startIndices[i] = v;
+    const st = STYLE[p.cls];
+    const a = p.cls === Wire.Building ? Math.round(aLo + (aHi - aLo) * p.shade) : st.a;
+    for (const [x, y] of p.path) {
+      positions[2 * v] = x; positions[2 * v + 1] = y;
+      colors[4 * v] = st.rgb[0]; colors[4 * v + 1] = st.rgb[1]; colors[4 * v + 2] = st.rgb[2]; colors[4 * v + 3] = a;
+      widths[v] = st.w;
+      v++;
+    }
+  });
+  return { length: paths.length, startIndices, positions, colors, widths };
+}
+
+/** ArrayBuffers to transfer (not copy) when posting a WireChunk. */
+export function wireTransferables(w: WireChunk): ArrayBuffer[] {
+  const l = w.lines;
+  return [l.startIndices.buffer, l.positions.buffer, l.colors.buffer, l.widths.buffer] as ArrayBuffer[];
 }
 
 const EPS = 1e-6;
@@ -45,7 +98,7 @@ export function ringToWire(ring: Ring, r: Rect): Pt[][] {
 }
 
 export function chunkWire(c: ChunkData): WireChunk {
-  const lines: WireChunk['lines'] = [];
+  const lines: { path: Pt[]; cls: Wire; shade: number }[] = [];
   const add = (rings: Ring[], cls: Wire, shade = 0) => {
     for (const ring of rings) for (const path of ringToWire(ring, c.rect)) lines.push({ path, cls, shade });
   };
@@ -65,7 +118,7 @@ export function chunkWire(c: ChunkData): WireChunk {
   return {
     key: c.key,
     rect: c.rect,
-    lines,
+    lines: packPaths(lines),
     roads,
     landmarks: c.landmarks.map((l) => ({ x: l.x, y: l.y, type: l.type })),
     districts: c.districts.map((d) => ({ ring: d.ring, type: d.type })),

@@ -184,34 +184,44 @@ export function buildLayers({ pack, tactical, lod, zoom, density, procgen }: Map
       data: countyLabels,
       getPosition: (d) => [d.x, d.y],
       getText: countyText,
-      getColor: hex(C.labelCounty, 150),
+      getColor: hex(C.labelCounty, 220),
       getSize: RENDER.labels.countySizePx,
       fontFamily: RENDER.labels.font,
+      fontWeight: 600,
       characterSet: 'auto',
+      fontSettings: { sdf: true },
+      outlineWidth: 3,
+      outlineColor: hex(C.water, 255),
     }),
     new ScatterplotLayer<Place>({
       id: 'place-dots',
       data: placeData,
       getPosition: (d) => [d.x, d.y],
       radiusUnits: 'pixels',
-      getRadius: (d) => (d.pop > 100_000 ? 3 : 2),
+      getRadius: (d) => (d.pop > 100_000 ? 4 : 3),
       getFillColor: hex(C.labelPlace, 200),
     }),
     new TextLayer<Place>({
-      id: 'place-labels',
+      id: `place-labels-${showTactical ? 't' : 's'}`,
       data: placeLabels,
       getPosition: (d) => [d.x, d.y],
       getText: (d) => d.name,
-      getColor: hex(C.labelPlace, 230),
+      getColor: hex(C.labelPlace, 255),
       getSize: placeSize,
-      getPixelOffset: [6, 0],
+      getPixelOffset: [8, 0],
       getTextAnchor: 'start',
       getAlignmentBaseline: 'center',
       fontFamily: RENDER.labels.font,
+      fontWeight: 600,
       characterSet: 'auto',
+      // Over the tactical wireframe an outline is not enough: use solid plates.
+      background: showTactical,
+      getBackgroundColor: hex(RENDER.labels.plate, 225),
+      backgroundPadding: [5, 2, 5, 2],
       fontSettings: { sdf: true },
-      outlineWidth: 2,
-      outlineColor: hex(C.water, 230),
+      outlineWidth: showTactical ? 0 : 3,
+      outlineColor: hex(C.water, 255),
+      updateTriggers: { getBackgroundColor: showTactical },
     }),
   );
 
@@ -233,6 +243,6 @@ function centerOf(g: GeoJSON.Geometry): { x: number; y: number } {
   return { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
 }
 
-const placeSize = (p: Place) => (p.pop > 100_000 ? RENDER.labels.placeSizePx + 2 : RENDER.labels.placeSizePx);
+const placeSize = (p: Place) => (p.pop > 100_000 ? RENDER.labels.placeSizePx + 3 : RENDER.labels.placeSizePx);
 const countyText = (c: CountyLabel) => c.name.replace(/ County$/, '').toUpperCase();
 
