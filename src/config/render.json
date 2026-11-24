@@ -4,6 +4,8 @@
     "waterInland": "#0d2240",
     "land": "#1b1f25",
     "landStrategic": "#1d2229",
+    "landOutside": "#15181d",
+    "regionLine": "#2fe6ff",
     "neighborLand": "#121419",
     "neighborBorder": "#3a4250",
     "stream": "#16365a",
@@ -34,6 +36,8 @@
     "bridge": "#9fb0c3",
     "chokepoint": "#ff6b5a",
     "ferry": "#4fb3c9",
+    "buildingMinZoom": -2.8,
+    "farBlockOpacity": 0.55,
     "widthPx": { "block": 1, "building": 1, "landmark": 1.6, "park": 1, "forest": 1 },
     "districtDebug": {
       "downtown": "#ff4fd8", "commercial": "#ffb347", "residential": "#58c8dc",

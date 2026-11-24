@@ -3,15 +3,20 @@ import PROCGEN from '../config/procgen.json';
 import { RegionPack } from '../geo/pack';
 import { generateChunk } from './chunk';
 import { GeoContext } from './context';
+import type { RegionMask } from '../campaign/region';
 import { chunkWire, wireTransferables } from './wire';
 
-export type WorkerIn = { type: 'init'; state: string; seed: number } | { type: 'gen'; cx: number; cy: number };
+export type WorkerIn =
+  | { type: 'init'; state: string; seed: number }
+  | { type: 'region'; mask: RegionMask | null; rv: number }
+  | { type: 'gen'; cx: number; cy: number; rv: number };
 export type WorkerOut =
   | { type: 'ready'; ms: number }
-  | { type: 'chunk'; cx: number; cy: number; wire: ReturnType<typeof chunkWire> }
+  | { type: 'chunk'; cx: number; cy: number; rv: number; wire: ReturnType<typeof chunkWire> }
   | { type: 'error'; message: string };
 
 let ctx: GeoContext | null = null;
+let region: RegionMask | null = null;
 const queue: WorkerIn[] = [];
 const post = (m: WorkerOut, transfer: Transferable[] = []) => (self as unknown as DedicatedWorkerGlobalScope).postMessage(m, transfer);
 
@@ -30,6 +35,7 @@ self.onmessage = async (e: MessageEvent<WorkerIn>) => {
     }
     return;
   }
+  if (msg.type === 'region') { region = msg.mask; return; } // ordered before later 'gen' messages
   if (!ctx) queue.push(msg);
   else run(msg);
 };
@@ -38,8 +44,8 @@ function run(msg: WorkerIn) {
   if (msg.type !== 'gen' || !ctx) return;
   try {
     const c = generateChunk(ctx, msg.cx, msg.cy);
-    const wire = chunkWire(c);
-    post({ type: 'chunk', cx: msg.cx, cy: msg.cy, wire }, wireTransferables(wire));
+    const wire = chunkWire(c, region);
+    post({ type: 'chunk', cx: msg.cx, cy: msg.cy, rv: msg.rv, wire }, wireTransferables(wire));
   } catch (err) {
     post({ type: 'error', message: `chunk ${msg.cx},${msg.cy}: ${(err as Error).message}` });
   }

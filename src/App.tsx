@@ -4,9 +4,11 @@ import RENDER from './config/render.json';
 import { densityToImageData, type DensityGrid } from './geo/density';
 import { RegionPack } from './geo/pack';
 import { ChunkStore } from './procgen/chunkStore';
+import CAMPAIGN from './config/campaign.json';
+import { STAGES, buildRegion, clipCollection, stageById, type Stage } from './campaign/region';
 import type { Place, TacticalLayers } from './geo/types';
 import { GameMap, type FlyTarget } from './render/GameMap';
-import type { Lod } from './render/layers';
+import type { Lod, RegionGeo } from './render/layers';
 import { buildProcLayers } from './render/procLayers';
 import { fitBounds } from './render/view';
 import { PlaceSearch } from './ui/PlaceSearch';
@@ -53,28 +55,12 @@ function Game({ pack }: { pack: RegionPack }) {
 
   const autoLod: Lod = zoom >= RENDER.lod.tacticalMinZoom ? 'tactical' : 'strategic';
   const lod: Lod = lodMode === 'auto' ? autoLod : lodMode;
-  const procgenOn = lod === 'tactical' && zoom >= PROCGEN.minZoom;
 
-  const [tooWide, setTooWide] = useState(false);
+  // ---- Campaign region: the playable area (a town, a city, then a county) ----
+  const [stage, setStage] = useState<Stage>(() => stageById(new URLSearchParams(window.location.search).get('stage')));
+  // Regions need the fine geometry, so it loads at startup (decode only: the
+  // full-state polygons are never triangulated, see clipCollection).
   useEffect(() => {
-    if (!viewRect || !store) return;
-    if (procgenOn) setTooWide(!store.setView(viewRect));
-    else { store.setView([0, 0, -1, -1]); setTooWide(false); }
-  }, [viewRect, procgenOn, store]);
-  // Rebuild generated-city layers only when the drawable chunk set or a toggle
-  // changes. Panning alone must not recreate ~160 layers every frame.
-  const visibleKey = procgenOn && store ? store.visibleKey() : '';
-  const showLandmarks = zoom >= RENDER.labels.landmarkMinZoom;
-  const labelZoom = Math.round(zoom * 2) / 2; // landmark declutter only on half-zoom steps
-  const procLayers = useMemo(
-    () => (procgenOn && store ? buildProcLayers(store.visible(), { districts: showDistricts, showLabels: showLandmarks, zoom: labelZoom }) : []),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- visibleKey captures store.visible()
-    [procgenOn, visibleKey, showDistricts, showLandmarks, labelZoom, store],
-  );
-
-  // Lazy-load the fine LOD the first time it is needed.
-  useEffect(() => {
-    if (lod !== 'tactical' || tactical || loadingTactical) return;
     setLoadingTactical(true);
     const t0 = performance.now();
     Promise.all([pack.tactical(), pack.fineDensity()]).then(([t, d]) => {
@@ -83,7 +69,62 @@ function Game({ pack }: { pack: RegionPack }) {
       setFineDensity(d);
       setLoadingTactical(false);
     });
-  }, [lod, tactical, loadingTactical, pack]);
+  }, [pack]);
+  const region = useMemo(() => (tactical ? buildRegion(stage, tactical) : null), [stage, tactical]);
+  const regionGeo = useMemo<RegionGeo | null>(() => {
+    if (!region || !tactical) return null;
+    const m = CAMPAIGN.displayMarginMeters, b = region.bbox;
+    const rect: [number, number, number, number] = [b[0] - m, b[1] - m, b[2] + m, b[3] + m];
+    return {
+      rect,
+      land: clipCollection(tactical.land, rect),
+      water: clipCollection(tactical.water, rect),
+      streams: clipCollection(tactical.streams, rect),
+      outline: region.polygons.map((p) => p[0]!),
+    };
+  }, [region, tactical]);
+
+  const fitRegion = useCallback((instant = false) => {
+    if (!region) return;
+    const el = document.querySelector('.map-host')!;
+    const v = fitBounds(region.bbox as [number, number, number, number], el.clientWidth, el.clientHeight);
+    const [tx, ty] = v.target as [number, number, number];
+    setFlyTo({ x: tx, y: ty, zoom: v.zoom as number, key: Date.now(), instant });
+  }, [region]);
+
+  // Fit the camera once per region change (StrictMode re-runs effects in dev;
+  // a ?place= deep link keeps its own view for the first region).
+  const fittedRegion = useRef<string | null>(null);
+  useEffect(() => {
+    if (!store || !region) return;
+    store.setRegion(region);
+    if (fittedRegion.current === region.stage.id) return;
+    const first = fittedRegion.current === null;
+    fittedRegion.current = region.stage.id;
+    if (first && new URLSearchParams(window.location.search).has('place')) return;
+    fitRegion(first);
+  }, [store, region, fitRegion]);
+
+  const genMinZoom = store?.pregenerated ? PROCGEN.regionMinZoom : PROCGEN.minZoom;
+  const procgenOn = lod === 'tactical' && zoom >= genMinZoom;
+
+  const [tooWide, setTooWide] = useState(false);
+  useEffect(() => {
+    if (!viewRect || !store || store.pregenerated) { setTooWide(false); return; }
+    setTooWide(procgenOn ? !store.setView(viewRect) : false);
+    if (!procgenOn) store.setView([0, 0, -1, -1]);
+  }, [viewRect, procgenOn, store, chunkVersion]);
+  // Rebuild generated-city layers only when the drawable chunk set or a toggle
+  // changes. Panning alone must not rebuild layers every frame.
+  const visibleKey = procgenOn && store ? store.visibleKey() : '';
+  const showLandmarks = zoom >= RENDER.labels.landmarkMinZoom;
+  const labelZoom = Math.round(zoom * 2) / 2; // landmark declutter only on half-zoom steps
+  const procLayers = useMemo(
+    () => (procgenOn && store ? buildProcLayers(store.visible(), { districts: showDistricts, showLabels: showLandmarks, zoom: labelZoom }) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- visibleKey captures store.visible()
+    [procgenOn, visibleKey, showDistricts, showLandmarks, labelZoom, store],
+  );
+  const gen = store?.progress() ?? { done: 0, total: 0 };
 
   // Density overlay: coarse grid in strategic, fine grid in tactical.
   const coarseImg = useMemo(() => densityImage(pack.coarseDensity), [pack]);
@@ -123,12 +164,13 @@ function Game({ pack }: { pack: RegionPack }) {
       if (k === 'd') setShowDensity((v) => !v);
       else if (k === 'g') setShowDistricts((v) => !v);
       else if (k === 'l') setLodMode((m) => (m === 'auto' ? 'strategic' : m === 'strategic' ? 'tactical' : 'auto'));
-      else if (k === 'f') fit();
+      else if (k === 'f') fitRegion();
+      else if (k === 's') fit();
       else if (k === '/') { e.preventDefault(); searchRef.current?.focus(); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [fit]);
+  }, [fit, fitRegion]);
 
   const metersPerPx = 1 / 2 ** zoom;
   const grid = lod === 'tactical' && fineDensity ? fineDensity : pack.coarseDensity;
@@ -153,13 +195,18 @@ function Game({ pack }: { pack: RegionPack }) {
         onZoom={setZoom}
         onHover={setHover}
         procgen={procLayers}
+        region={regionGeo}
         onView={setViewRect}
       />
 
       <header className="topbar">
         <div className="brand">OUTBREAK GRID</div>
-        <div className="stat"><label>REGION</label>{pack.manifest.state.name}</div>
-        <div className="stat"><label>POP 2020</label>{pack.manifest.state.population2020.toLocaleString()}</div>
+        <div className="stat">
+          <label>REGION</label>
+          <select className="stage" value={stage.id} onChange={(e) => setStage(stageById(e.target.value))} title="Campaign region (dev: all unlocked)">
+            {STAGES.map((st, i) => <option key={st.id} value={st.id}>{i + 1}. {st.label}</option>)}
+          </select>
+        </div>
         <div className={`stat lod ${lod}`}>
           <label>VIEW</label>
           {lod.toUpperCase()}
@@ -167,10 +214,14 @@ function Game({ pack }: { pack: RegionPack }) {
           {loadingTactical && <span className="muted"> loading...</span>}
         </div>
         <div className="stat"><label>SCALE</label>{formatScale(metersPerPx)}</div>
-        {procgenOn && store && (
+        {store && region && (
           <div className="stat">
             <label>CITY GEN</label>
-            {tooWide ? <span className="muted">zoom in</span> : <>{store.visible().length} chunks{store.pending() > 0 && <span className="muted"> +{store.pending()}</span>}</>}
+            {store.pregenerated
+              ? gen.done < gen.total
+                ? <span>{gen.done}/{gen.total} <span className="muted">building...</span></span>
+                : <span>{gen.total} chunks</span>
+              : tooWide || !procgenOn ? <span className="muted">zoom in</span> : <span>{gen.done}/{gen.total}</span>}
           </div>
         )}
         <div className="spacer" />
@@ -187,8 +238,11 @@ function Game({ pack }: { pack: RegionPack }) {
         <button className={showDistricts ? 'on' : ''} onClick={() => setShowDistricts((v) => !v)} title="Toggle generated district + chunk debug overlay (G)">
           Districts <kbd>G</kbd>
         </button>
-        <button onClick={fit} title="Fit the whole state (F)">
-          Fit state <kbd>F</kbd>
+        <button onClick={() => fitRegion()} title="Fit the campaign region (F)">
+          Fit region <kbd>F</kbd>
+        </button>
+        <button onClick={fit} title="Fit the whole state (S)">
+          Fit state <kbd>S</kbd>
         </button>
         <button onClick={() => setShowCredits((v) => !v)} title="Data credits">Credits</button>
       </aside>
@@ -201,7 +255,7 @@ function Game({ pack }: { pack: RegionPack }) {
             <span>{hoverInfo.land ? `land · ~${Math.round(hoverInfo.ppk).toLocaleString()} ppl/km² · density ${hoverInfo.norm.toFixed(2)}` : 'water / outside'}</span>
           </>
         ) : (
-          <span className="muted">Drag to pan · wheel to zoom · / search · D density · G districts · L LOD · F fit</span>
+          <span className="muted">Drag to pan · wheel to zoom · / search · F fit region · S fit state · D density · G districts · L LOD</span>
         )}
         <span className="credit">Boundary and population data: U.S. Census Bureau</span>
       </footer>

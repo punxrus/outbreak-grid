@@ -2,6 +2,7 @@
   "seed": 1337,
   "chunkSize": 1000,
   "minZoom": -2.3,
+  "regionMinZoom": -5.5,
   "maxCachedChunks": 200,
   "maxVisibleChunks": 80,
   "frameBudgetMs": 14,

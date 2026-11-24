@@ -4,7 +4,7 @@ Zombie auto-battler on real US geography, flat top-down 2D. The land comes from
 U.S. Census Bureau public-domain data. Everything built on it will be
 procedurally generated from a seed (from M2 on).
 
-**Status: Milestone 2, awaiting visual sign-off** (M1 plus seeded, seam-safe city generation drawn as a wireframe, and nav export for the sim).
+**Status: Milestone 2, awaiting visual sign-off** (M1 plus seeded, seam-safe city generation drawn as a wireframe, nav export for the sim, and campaign regions starting in Forks).
 
 ## Run it
 
@@ -15,11 +15,11 @@ npm run dev                       # http://localhost:5180
 npm test                          # unit + pack integrity tests
 ```
 
-Controls: drag to pan, wheel to zoom, `/` search places, `D` density overlay,
-`G` generated districts + chunk grid, `L` cycle LOD (auto / strategic / tactical), `F` fit state.
-City generation starts below about 5 m/px (`procgen.json` → `minZoom`).
+Controls: drag to pan, wheel to zoom, `/` search places, `F` fit region, `S` fit state,
+`D` density overlay, `G` generated districts + chunk grid, `L` cycle LOD (auto / strategic / tactical).
+The **REGION** dropdown switches campaign stages (all unlocked for now).
 
-Dev deep links: `?place=Seattle&zoom=-1.6&dx=0&dy=0&density=1&districts=1&lod=tactical`.
+Dev deep links: `?stage=tacoma&place=Tacoma&zoom=-1.6&dx=0&dy=0&density=1&districts=1&lod=tactical`.
 
 Desktop build (needs the Rust toolchain, see Known issues):
 
@@ -86,6 +86,36 @@ work in the same space.
    `%LOCALAPPDATA%\outbreak-grid\geo-cache` (≈350 MB for WA). Downloads run
    one at a time because www2.census.gov rate-limits parallel requests (HTTP 429).
 6. **Dev port 5180** (5173 is used by another project in this folder).
+
+## Campaign regions
+
+The game is played one region at a time (`src/config/campaign.json`):
+**Forks → Tacoma → Pierce County → Seattle → King County → Olympia → Thurston County**.
+Forks is the tutorial: a small, isolated town with a small outbreak, so the pace
+can build and the systems can be taught before the scale ramps up.
+
+A region is the real boundary (city limits or county, from the pack) plus a
+margin, rasterized to a mask (`src/campaign/region.ts`). The mask decides which
+chunks to generate, and the worker uses it to trim content to the region.
+- **Towns and cities** (≤ 500 chunks: Forks 73, Olympia 123, Tacoma 243,
+  Seattle 481) are generated whole at load, nearest first, and drawn as 4×4-chunk
+  merged layers. They take about 6–15 s after the pack loads.
+- **Counties** (2,000–6,000 chunks) stream by view, limited to the county.
+- **Only the region's geography is drawn in detail.** Land, water and streams
+  are clipped around the region; outside it the dim 1:500k map shows.
+  Triangulating the full-state tactical land polygon (305k vertices, hundreds of
+  lake holes) blocked the main thread for over a minute. It caused the "freezes,
+  then comes back" behavior.
+- **Level of detail:** below about 7 m/px, building outlines are hidden and block
+  outlines dim, so a whole city reads as a street map.
+
+### Small towns
+Census tracts around rural towns are huge, so tract density alone made Forks
+look like forest. Inside places under 20k people, the population is packed into
+a compact core at about 1,000 people/km² (radius from population), drawn as a new
+`town` district type (platted grid, big lots). Every place of 1,000+ gets a
+district at its Census center, so it always has a main street (small towns) or
+a downtown (cities).
 
 ## M2: city generation
 
@@ -158,6 +188,9 @@ edge meets its neighbor to the millimeter. What makes it work:
 - **Tactical LOD loads the whole state at once** (~1.1M vertices, decoded on
   the main thread on first zoom-in). This is fine for M1. M3 moves geometry
   to chunked, worker-decoded tiles.
+- **Counties** still use the clipped-geometry path. Pierce/King county land
+  clips to about 2 MB with many lake holes, so expect a short triangulation pause
+  when switching to a county stage until that moves into a worker.
 - **Wireframe performance on a real GPU hasn't been measured.** This was
   checked headless with software WebGL, where even the M1 tactical view runs
   at 0.3 fps. It needs a pass on real hardware: about 80 chunks × 2 path

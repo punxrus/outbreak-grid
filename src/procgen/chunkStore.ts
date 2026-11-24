@@ -1,32 +1,40 @@
+import CAMPAIGN from '../config/campaign.json';
 import PROCGEN from '../config/procgen.json';
+import type { Region } from '../campaign/region';
 import { chunkKey } from './chunk';
 import type { WireChunk } from './wire';
 import type { WorkerIn, WorkerOut } from './worker';
 
 const C = PROCGEN.chunkSize;
 
+type Slot = { w: Worker; busy: number; jobs: Set<string>; dead: boolean };
+
 /**
- * Streams generated chunks for the current view. Generation runs in a small
- * worker pool; each worker builds its own GeoContext from the pack. Chunks are
- * pure functions of (seed, cx, cy), so a cache miss just regenerates.
+ * Generated chunks for the active region. Small regions (a town or city) are
+ * generated whole, nearest the center first, and kept. Large regions (a
+ * county) stream: only chunks in view, limited to the region. Generation runs
+ * in a small worker pool; each worker builds its own GeoContext from the pack.
  */
 export class ChunkStore {
-  private readonly workers: { w: Worker; busy: number; jobs: Set<string>; dead: boolean }[] = [];
-  private notifyTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly workers: Slot[] = [];
   private readonly cache = new Map<string, WireChunk>(); // insertion order = LRU
   private readonly inflight = new Set<string>();
-  private readonly failed = new Set<string>(); // never retried in this session
+  private readonly failed = new Set<string>(); // never retried in this region
+  private regionSet = new Set<string>();
+  private regionChunks: [number, number][] = [];
+  private pregen = false;
+  private rv = 0; // region version: results from an older region are dropped
   private wanted: [number, number][] = [];
   private version = 0;
+  private notifyTimer: ReturnType<typeof setTimeout> | null = null;
   ready = false;
-  lastMs: number[] = [];
 
-  // Each worker decodes its own copy of the state geometry (~300 MB), so keep the pool small.
+  // Each worker decodes its own copy of the state geometry, so keep the pool small.
   constructor(state: string, private readonly onChange: (version: number) => void, workers = Math.min(2, Math.max(1, (navigator.hardwareConcurrency || 2) - 1))) {
     let readyCount = 0;
     for (let i = 0; i < workers; i++) {
       const w = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
-      const slot = { w, busy: 0, jobs: new Set<string>(), dead: false };
+      const slot: Slot = { w, busy: 0, jobs: new Set(), dead: false };
       w.onmessage = (e: MessageEvent<WorkerOut>) => {
         const m = e.data;
         if (m.type === 'ready') {
@@ -34,14 +42,15 @@ export class ChunkStore {
           this.ready = true;
           this.pump();
         } else if (m.type === 'chunk') {
-          slot.busy--;
+          slot.busy = Math.max(0, slot.busy - 1);
           const key = chunkKey(m.cx, m.cy);
           slot.jobs.delete(key);
-          this.inflight.delete(key);
-          this.cache.set(key, m.wire);
-          this.lastMs = [...this.lastMs.slice(-49), m.wire.stats.ms];
-          while (this.cache.size > PROCGEN.maxCachedChunks) this.cache.delete(this.cache.keys().next().value!);
-          this.bump();
+          if (m.rv === this.rv) {
+            this.inflight.delete(key);
+            this.cache.set(key, m.wire);
+            this.trim();
+            this.bump();
+          }
           this.pump();
         } else {
           slot.busy = Math.max(0, slot.busy - 1);
@@ -65,19 +74,40 @@ export class ChunkStore {
     }
   }
 
-  /** Set the view; returns false when the view is too large to generate. */
+  /** Switch the active region. Drops everything generated for the previous one. */
+  setRegion(region: Region | null) {
+    this.rv++;
+    this.cache.clear();
+    this.inflight.clear();
+    this.failed.clear();
+    for (const s of this.workers) { s.jobs.clear(); s.w.postMessage({ type: 'region', mask: region?.mask ?? null, rv: this.rv } satisfies WorkerIn); }
+    this.regionChunks = region?.chunks ?? [];
+    this.regionSet = new Set(this.regionChunks.map(([x, y]) => chunkKey(x, y)));
+    this.pregen = this.regionChunks.length > 0 && this.regionChunks.length <= CAMPAIGN.pregenMaxChunks;
+    this.wanted = this.pregen ? this.regionChunks : [];
+    this.bump();
+    this.pump();
+  }
+
+  /** True when the whole region is generated up front (no view streaming). */
+  get pregenerated() { return this.pregen; }
+
+  /**
+   * View change. Only matters for streamed (large) regions; returns false when
+   * the view covers too many chunks to generate.
+   */
   setView(rect: [number, number, number, number]): boolean {
+    if (this.pregen) return true;
     const x0 = Math.floor(rect[0] / C), x1 = Math.floor(rect[2] / C), y0 = Math.floor(rect[1] / C), y1 = Math.floor(rect[3] / C);
-    const n = (x1 - x0 + 1) * (y1 - y0 + 1);
-    if (n > PROCGEN.maxVisibleChunks) {
+    const before = this.visibleKey();
+    if ((x1 - x0 + 1) * (y1 - y0 + 1) > PROCGEN.maxVisibleChunks) {
       if (this.wanted.length) { this.wanted = []; this.bump(); }
       return false;
     }
     const mx = (rect[0] + rect[2]) / 2 / C, my = (rect[1] + rect[3]) / 2 / C;
     const list: [number, number][] = [];
-    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) list.push([x, y]);
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (this.regionSet.has(chunkKey(x, y))) list.push([x, y]);
     list.sort((a, b) => (a[0] + 0.5 - mx) ** 2 + (a[1] + 0.5 - my) ** 2 - ((b[0] + 0.5 - mx) ** 2 + (b[1] + 0.5 - my) ** 2));
-    const before = this.visibleKey();
     this.wanted = list;
     for (const [x, y] of list) { // refresh LRU position of visible chunks
       const k = chunkKey(x, y), c = this.cache.get(k);
@@ -94,8 +124,15 @@ export class ChunkStore {
     return out;
   }
 
-  pending(): number {
-    return this.wanted.filter(([x, y]) => { const k = chunkKey(x, y); return !this.cache.has(k) && !this.failed.has(k); }).length;
+  /** Changes only when the set of drawable chunks changes (not on every pan). */
+  visibleKey(): string {
+    return `${this.rv}|` + this.visible().map((c) => c.key).join(';');
+  }
+
+  progress(): { done: number; total: number } {
+    let done = 0;
+    for (const [x, y] of this.wanted) { const k = chunkKey(x, y); if (this.cache.has(k) || this.failed.has(k)) done++; }
+    return { done, total: this.wanted.length };
   }
 
   dispose() {
@@ -103,15 +140,15 @@ export class ChunkStore {
     for (const s of this.workers) s.w.terminate();
   }
 
-  /** Coalesce chunk arrivals: at most one React update per ~120 ms. */
+  private trim() {
+    const cap = Math.max(PROCGEN.maxCachedChunks, this.pregen ? this.regionChunks.length : 0);
+    while (this.cache.size > cap) this.cache.delete(this.cache.keys().next().value!);
+  }
+
+  /** Coalesce updates: at most one React update per ~120 ms. */
   private bump() {
     if (this.notifyTimer) return;
     this.notifyTimer = setTimeout(() => { this.notifyTimer = null; this.onChange(++this.version); }, 120);
-  }
-
-  /** Changes only when the set of drawable chunks changes (not on every pan). */
-  visibleKey(): string {
-    return this.visible().map((c) => c.key).join(';');
   }
 
   private pump() {
@@ -122,11 +159,13 @@ export class ChunkStore {
       const live = this.workers.filter((w) => !w.dead);
       if (!live.length) return;
       const slot = live.reduce((a, b) => (b.busy < a.busy ? b : a));
-      if (slot.busy >= 2) return; // keep a short queue per worker so view changes re-prioritize
+      // Streaming: short queue per worker so view changes re-prioritize.
+      // Pre-generation: queue everything, so workers never wait on a busy main thread.
+      if (!this.pregen && slot.busy >= 2) return;
       slot.busy++;
       slot.jobs.add(k);
       this.inflight.add(k);
-      slot.w.postMessage({ type: 'gen', cx: x, cy: y } satisfies WorkerIn);
+      slot.w.postMessage({ type: 'gen', cx: x, cy: y, rv: this.rv } satisfies WorkerIn);
     }
   }
 }

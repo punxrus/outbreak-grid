@@ -1,6 +1,6 @@
 import type { Layer } from '@deck.gl/core';
 import { PathStyleExtension } from '@deck.gl/extensions';
-import { BitmapLayer, GeoJsonLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers';
+import { BitmapLayer, GeoJsonLayer, PathLayer, ScatterplotLayer, SolidPolygonLayer, TextLayer } from '@deck.gl/layers';
 import RENDER from '../config/render.json';
 import type { RegionPack } from '../geo/pack';
 import type { CountyLabel, Place, TacticalLayers } from '../geo/types';
@@ -17,6 +17,16 @@ export interface MapLayerInput {
   density: { image: ImageData; bounds: [number, number, number, number] } | null;
   /** Generated-city wireframe (drawn over real land/water, under overlays and labels). */
   procgen?: Layer[];
+  /** Active region: real geography clipped around it, and its boundary. */
+  region?: RegionGeo | null;
+}
+
+export interface RegionGeo {
+  rect: [number, number, number, number];
+  land: GeoJSON.FeatureCollection;
+  water: GeoJSON.FeatureCollection;
+  streams: GeoJSON.FeatureCollection;
+  outline: number[][][]; // outer rings of the boundary
 }
 
 const C = RENDER.colors;
@@ -27,9 +37,10 @@ const DASH = RENDER.lines.dashArray as [number, number];
  * Build the deck.gl layer stack for the current frame. Data references stay
  * stable between calls, so deck.gl only re-tessellates when a pack loads.
  */
-export function buildLayers({ pack, tactical, lod, zoom, density, procgen }: MapLayerInput): Layer[] {
+export function buildLayers({ pack, tactical, lod, zoom, density, procgen, region }: MapLayerInput): Layer[] {
   const s = pack.strategic;
-  const showTactical = lod === 'tactical' && tactical !== null;
+  // Tactical detail exists only around the active region (see clipCollection).
+  const showTactical = lod === 'tactical' && tactical !== null && !!region;
   const layers: Layer[] = [];
 
   // Out-of-region context (neighboring US states), both LODs.
@@ -51,10 +62,11 @@ export function buildLayers({ pack, tactical, lod, zoom, density, procgen }: Map
     new GeoJsonLayer({
       id: 'strategic-land',
       data: s.land,
-      visible: !showTactical,
       filled: true,
       stroked: true,
-      getFillColor: hex(C.landStrategic),
+      // outside the active region in tactical view: dimmed context
+      getFillColor: showTactical ? hex(C.landOutside) : hex(C.landStrategic),
+      updateTriggers: { getFillColor: showTactical },
       getLineColor: hex(C.stateLine, 70),
       lineWidthUnits: 'pixels',
       getLineWidth: 0.8,
@@ -62,39 +74,40 @@ export function buildLayers({ pack, tactical, lod, zoom, density, procgen }: Map
     new GeoJsonLayer({
       id: 'strategic-water',
       data: s.water,
-      visible: !showTactical,
       filled: true,
       stroked: false,
       getFillColor: hex(C.waterInland),
     }),
   );
 
-  // ---- TACTICAL (TIGER/Line fine) ----
-  if (tactical) {
+  // ---- TACTICAL (TIGER/Line fine), clipped to the active region ----
+  if (showTactical && region) {
+    const [x0, y0, x1, y1] = region.rect;
     layers.push(
+      // water-colored backdrop hides the coarse strategic coast under the detail
+      new SolidPolygonLayer<[number, number][]>({
+        id: 'region-backdrop',
+        data: [[[x0, y0], [x1, y0], [x1, y1], [x0, y1]]],
+        getPolygon: (d) => d,
+        getFillColor: hex(C.water),
+      }),
       new GeoJsonLayer({
         id: 'tactical-land',
-        data: tactical.land,
-        visible: showTactical,
+        data: region.land,
         filled: true,
-        stroked: true,
+        stroked: false,
         getFillColor: hex(C.land),
-        getLineColor: hex(C.stateLine, 55),
-        lineWidthUnits: 'pixels',
-        getLineWidth: 0.8,
       }),
       new GeoJsonLayer({
         id: 'tactical-water',
-        data: tactical.water,
-        visible: showTactical,
+        data: region.water,
         filled: true,
         stroked: false,
         getFillColor: hex(C.waterInland),
       }),
       new GeoJsonLayer({
         id: 'tactical-streams',
-        data: tactical.streams,
-        visible: showTactical,
+        data: region.streams,
         filled: false,
         stroked: true,
         getLineColor: hex(C.stream),
@@ -107,6 +120,18 @@ export function buildLayers({ pack, tactical, lod, zoom, density, procgen }: Map
   }
 
   if (showTactical && procgen) layers.push(...procgen);
+  if (showTactical && region) {
+    layers.push(
+      new PathLayer<number[][]>({
+        id: 'region-outline',
+        data: region.outline,
+        getPath: (d) => d as [number, number][],
+        getColor: hex(C.regionLine, 220),
+        getWidth: 2,
+        widthUnits: 'pixels',
+      }),
+    );
+  }
 
   // ---- Debug: population density overlay ----
   if (density) {

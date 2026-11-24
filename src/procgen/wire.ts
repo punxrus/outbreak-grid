@@ -1,5 +1,6 @@
 import RENDER from '../config/render.json';
-import type { Pt, Rect, Ring } from './geom';
+import { inRegion, type RegionMask } from '../campaign/region';
+import { ringCentroid, type Pt, type Rect, type Ring } from './geom';
 import type { ChunkData, DistrictType, LandmarkType, RoadKind } from './types';
 
 /** Line classes of the wireframe, drawn in pixel widths. */
@@ -22,8 +23,10 @@ export interface PathBuffers {
 export interface WireChunk {
   key: string;
   rect: Rect;
-  /** Outlines in pixel widths, chunk-border segments removed so seams never show. */
+  /** Ground outlines (blocks, parks, forests) in pixel widths; chunk-border segments removed so seams never show. */
   lines: PathBuffers;
+  /** Building and landmark footprints: a separate buffer so they can fade out when zoomed far out. */
+  bldg: PathBuffers;
   /** Bridges, ferries, road centerlines; few, so kept as objects (dash styling). */
   roads: { path: Pt[]; kind: RoadKind; width: number; chokepoint: boolean }[];
   landmarks: { x: number; y: number; type: LandmarkType }[];
@@ -66,8 +69,7 @@ function packPaths(paths: { path: Pt[]; cls: Wire; shade: number }[]): PathBuffe
 
 /** ArrayBuffers to transfer (not copy) when posting a WireChunk. */
 export function wireTransferables(w: WireChunk): ArrayBuffer[] {
-  const l = w.lines;
-  return [l.startIndices.buffer, l.positions.buffer, l.colors.buffer, l.widths.buffer] as ArrayBuffer[];
+  return [w.lines, w.bldg].flatMap((l) => [l.startIndices.buffer, l.positions.buffer, l.colors.buffer, l.widths.buffer]) as ArrayBuffer[];
 }
 
 const EPS = 1e-6;
@@ -97,30 +99,48 @@ export function ringToWire(ring: Ring, r: Rect): Pt[][] {
   return out;
 }
 
-export function chunkWire(c: ChunkData): WireChunk {
+/**
+ * Render-ready chunk. With a region, only content inside it is kept: blocks
+ * and buildings by centroid (so they stay whole), roads by segment midpoint.
+ */
+export function chunkWire(c: ChunkData, region?: RegionMask | null): WireChunk {
+  const inside = (x: number, y: number) => !region || inRegion(region, x, y);
+  const keepRing = (r: Ring) => { const [x, y] = ringCentroid(r); return inside(x, y); };
   const lines: { path: Pt[]; cls: Wire; shade: number }[] = [];
   const add = (rings: Ring[], cls: Wire, shade = 0) => {
-    for (const ring of rings) for (const path of ringToWire(ring, c.rect)) lines.push({ path, cls, shade });
+    for (const ring of rings) {
+      if (!keepRing(ring)) continue;
+      for (const path of ringToWire(ring, c.rect)) lines.push({ path, cls, shade });
+    }
   };
   add(c.forests, Wire.Forest);
   add(c.parks, Wire.Park);
   add(c.blocks, Wire.Block);
+  const bldg: typeof lines = [];
   for (const b of c.buildings) {
+    if (!keepRing(b.ring)) continue;
     // buildings are inside lots, never on the border: close the loop
-    lines.push({ path: [...b.ring, b.ring[0]!], cls: b.landmark ? Wire.Landmark : Wire.Building, shade: b.shade });
+    bldg.push({ path: [...b.ring, b.ring[0]!], cls: b.landmark ? Wire.Landmark : Wire.Building, shade: b.shade });
   }
   const roads: WireChunk['roads'] = [];
   for (const r of c.roads) {
-    if (r.kind === 'bridge' || r.kind === 'ferry' || r.kind === 'arterial' || r.kind === 'collector') {
-      roads.push({ path: r.pts, kind: r.kind, width: r.width, chokepoint: !!r.chokepoint });
+    if (r.kind !== 'bridge' && r.kind !== 'ferry' && r.kind !== 'arterial' && r.kind !== 'collector') continue;
+    // split into runs of segments whose midpoint is inside the region
+    let run: Pt[] = [];
+    const flush = () => { if (run.length > 1) roads.push({ path: run, kind: r.kind, width: r.width, chokepoint: !!r.chokepoint }); run = []; };
+    for (let i = 0; i + 1 < r.pts.length; i++) {
+      const a = r.pts[i]!, b = r.pts[i + 1]!;
+      if (inside((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)) { if (!run.length) run.push(a); run.push(b); } else flush();
     }
+    flush();
   }
   return {
     key: c.key,
     rect: c.rect,
     lines: packPaths(lines),
+    bldg: packPaths(bldg),
     roads,
-    landmarks: c.landmarks.map((l) => ({ x: l.x, y: l.y, type: l.type })),
+    landmarks: c.landmarks.filter((l) => inside(l.x, l.y)).map((l) => ({ x: l.x, y: l.y, type: l.type })),
     districts: c.districts.map((d) => ({ ring: d.ring, type: d.type })),
     stats: c.stats,
   };

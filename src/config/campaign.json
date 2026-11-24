@@ -1,0 +1,14 @@
+{
+  "stages": [
+    { "id": "forks", "label": "Forks", "kind": "place", "name": "Forks", "marginMeters": 1500 },
+    { "id": "tacoma", "label": "Tacoma", "kind": "place", "name": "Tacoma", "marginMeters": 500 },
+    { "id": "pierce", "label": "Pierce County", "kind": "county", "name": "Pierce", "marginMeters": 0 },
+    { "id": "seattle", "label": "Seattle", "kind": "place", "name": "Seattle", "marginMeters": 500 },
+    { "id": "king", "label": "King County", "kind": "county", "name": "King", "marginMeters": 0 },
+    { "id": "olympia", "label": "Olympia", "kind": "place", "name": "Olympia", "marginMeters": 800 },
+    { "id": "thurston", "label": "Thurston County", "kind": "county", "name": "Thurston", "marginMeters": 0 }
+  ],
+  "pregenMaxChunks": 500,
+  "displayMarginMeters": 8000,
+  "maskMaxCells": 4000000
+}

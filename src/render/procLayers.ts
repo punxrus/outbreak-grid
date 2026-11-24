@@ -29,14 +29,87 @@ const PRIORITY: Record<string, number> = {
  * and only uploads the new ones. Outlines arrive as binary buffers from the
  * worker: no per-path JS objects on the main thread.
  */
+function binaryPaths(id: string, b: WireChunk['lines'], opacity: number, visible = true): Layer {
+  return new PathLayer({
+    id,
+    data: {
+      length: b.length,
+      startIndices: b.startIndices,
+      attributes: {
+        getPath: { value: b.positions, size: 2 },
+        getColor: { value: b.colors, size: 4, normalized: true },
+        getWidth: { value: b.widths, size: 1 },
+      },
+    },
+    _pathType: 'open',
+    positionFormat: 'XY',
+    widthUnits: 'pixels',
+    jointRounded: false,
+    capRounded: false,
+    miterLimit: 2,
+    opacity,
+    visible,
+  } as never);
+}
+
+interface Group { key: string; lines: WireChunk['lines']; bldg: WireChunk['bldg']; roads: Road[]; districts: WireChunk['districts'] }
+
+const GROUP = 4; // chunks per group side
+const groupCache = new Map<string, Group>(); // content key -> merged group (stable refs keep GPU buffers)
+
+/** Concatenate chunk path buffers into one (offsetting start indices). */
+function mergeLines(parts: WireChunk['lines'][]): WireChunk['lines'] {
+  let paths = 0, verts = 0;
+  for (const p of parts) { paths += p.length; verts += p.widths.length; }
+  const startIndices = new Uint32Array(paths), positions = new Float32Array(verts * 2), colors = new Uint8Array(verts * 4), widths = new Float32Array(verts);
+  let pi = 0, vi = 0;
+  for (const p of parts) {
+    for (let i = 0; i < p.length; i++) startIndices[pi + i] = p.startIndices[i]! + vi;
+    positions.set(p.positions, vi * 2); colors.set(p.colors, vi * 4); widths.set(p.widths, vi);
+    pi += p.length; vi += p.widths.length;
+  }
+  return { length: paths, startIndices, positions, colors, widths };
+}
+
+function groupsOf(chunks: WireChunk[]): Group[] {
+  const by = new Map<string, WireChunk[]>();
+  for (const c of chunks) {
+    const [cx, cy] = c.key.split(',').map(Number) as [number, number];
+    const gk = `${Math.floor(cx / GROUP)},${Math.floor(cy / GROUP)}`;
+    const list = by.get(gk);
+    if (list) list.push(c); else by.set(gk, [c]);
+  }
+  const out: Group[] = [];
+  for (const [gk, list] of by) {
+    list.sort((a, b) => (a.key < b.key ? -1 : 1));
+    const key = `${gk}|${list.map((c) => c.key).join(';')}`;
+    let g = groupCache.get(key);
+    if (!g) {
+      g = { key: gk, lines: mergeLines(list.map((c) => c.lines)), bldg: mergeLines(list.map((c) => c.bldg)), roads: list.flatMap((c) => c.roads), districts: list.flatMap((c) => c.districts) };
+      groupCache.set(key, g);
+      if (groupCache.size > 512) groupCache.delete(groupCache.keys().next().value!);
+    }
+    out.push(g);
+  }
+  return out;
+}
+
+/**
+ * Wireframe layers for generated chunks, merged into 4x4-chunk groups so a
+ * whole city is a few dozen layers. Group objects are cached by content, so
+ * when one chunk arrives only its group is re-merged and re-uploaded.
+ * Outlines are binary buffers from the worker: no per-path JS objects.
+ */
 export function buildProcLayers(chunks: WireChunk[], opts: { districts: boolean; showLabels: boolean; zoom: number }): Layer[] {
   const layers: Layer[] = [];
-  for (const c of chunks) {
-    const lines = c.lines;
+  // Zoomed far out, thousands of 1 px outlines merge into a solid mass:
+  // hide buildings and dim the block outlines so the street structure reads.
+  const farOpacity = opts.zoom >= W.buildingMinZoom ? 1 : W.farBlockOpacity;
+  for (const g of groupsOf(chunks)) {
     layers.push(
       new PathLayer<Road>({
-        id: `pg-road-${c.key}`,
-        data: c.roads,
+        id: `pg-road-${g.key}`,
+        data: g.roads,
         getPath: (d: Road) => d.path,
         getColor: (d: Road) => d.kind === 'ferry' ? hex(W.ferry, 200) : d.kind === 'bridge' ? hex(d.chokepoint ? W.chokepoint : W.bridge, 230)
           : d.kind === 'arterial' ? hex(W.arterial, 150) : hex(W.collector, 120),
@@ -48,30 +121,14 @@ export function buildProcLayers(chunks: WireChunk[], opts: { districts: boolean;
         dashJustified: false,
         extensions: [dash],
       } as never),
-      new PathLayer({
-        id: `pg-wire-${c.key}`,
-        data: {
-          length: lines.length,
-          startIndices: lines.startIndices,
-          attributes: {
-            getPath: { value: lines.positions, size: 2 },
-            getColor: { value: lines.colors, size: 4, normalized: true },
-            getWidth: { value: lines.widths, size: 1 },
-          },
-        },
-        _pathType: 'open',
-        positionFormat: 'XY',
-        widthUnits: 'pixels',
-        jointRounded: false,
-        capRounded: false,
-        miterLimit: 2,
-      } as never),
+      binaryPaths(`pg-wire-${g.key}`, g.lines, farOpacity),
+      binaryPaths(`pg-bldg-${g.key}`, g.bldg, 1, opts.zoom >= W.buildingMinZoom),
     );
     if (opts.districts) {
       layers.push(
         new PolygonLayer<WireChunk['districts'][number]>({
-          id: `pg-district-${c.key}`,
-          data: c.districts,
+          id: `pg-district-${g.key}`,
+          data: g.districts,
           getPolygon: (d) => d.ring,
           filled: true,
           stroked: false,

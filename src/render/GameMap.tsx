@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import RENDER from '../config/render.json';
 import type { RegionPack } from '../geo/pack';
 import type { TacticalLayers } from '../geo/types';
-import { buildLayers, type Lod } from './layers';
+import { buildLayers, type Lod, type RegionGeo } from './layers';
 import { fitBounds } from './view';
 
 export interface FlyTarget { x: number; y: number; zoom: number; key: number; instant?: boolean }
@@ -18,6 +18,7 @@ interface Props {
   onZoom: (zoom: number) => void;
   onHover: (coord: [number, number] | null) => void;
   procgen: Layer[];
+  region: RegionGeo | null;
   /** Visible world rectangle in meters, on every view change. */
   onView: (rect: [number, number, number, number]) => void;
 }
@@ -31,7 +32,7 @@ const VIEW = new OrthographicView({ id: 'map', flipY: false, controller: true })
 const interp = new LinearInterpolator(['target', 'zoom']);
 
 /** Flat top-down 2D map: deck.gl standalone with an orthographic (no pitch, no bearing) view in meters. */
-export function GameMap({ pack, tactical, lod, zoom, density, flyTo, onZoom, onHover, procgen, onView }: Props) {
+export function GameMap({ pack, tactical, lod, zoom, density, flyTo, onZoom, onHover, procgen, region, onView }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const deck = useRef<Deck<OrthographicView> | null>(null);
   const cb = useRef({ onZoom, onHover, onView });
@@ -70,8 +71,8 @@ export function GameMap({ pack, tactical, lod, zoom, density, flyTo, onZoom, onH
   // Zoom is bucketed so label filtering does not rebuild every wheel tick.
   const zoomBucket = Math.round(zoom * 4) / 4;
   const layers = useMemo(
-    () => buildLayers({ pack, tactical, lod, zoom: zoomBucket, density, procgen }),
-    [pack, tactical, lod, zoomBucket, density, procgen],
+    () => buildLayers({ pack, tactical, lod, zoom: zoomBucket, density, procgen, region }),
+    [pack, tactical, lod, zoomBucket, density, procgen, region],
   );
 
   useEffect(() => {
