@@ -8,7 +8,7 @@
   "raster": { "cell": 2, "marginMeters": 40, "regionCell": 10 },
   "districts": {
     "minSitesPerKm2": 0.4,
-    "maxSitesPerKm2": 18,
+    "maxSitesPerKm2": 7,
     "densityExponent": 2.2,
     "typeJitter": 0.035,
     "outsideCityPenalty": 0.12,
@@ -20,8 +20,11 @@
       { "type": "rural", "min": 0.22 },
       { "type": "forest", "min": -10 }
     ],
-    "parkChance": { "commercial": 0.04, "residential": 0.08, "suburban": 0.07 },
-    "angleFieldScaleMeters": 3500
+    "parkChance": { "commercial": 0.01, "residential": 0.02, "suburban": 0.02 },
+    "angleFieldScaleMeters": 3500,
+    "gridAngleStepDeg": 6,
+    "downtownCore": { "minPop": 20000, "metersPerSqrtThousand": 52, "promoteWithin": 0.5 },
+    "industrialWithinCoreRadii": 2.5
   },
   "arterials": {
     "width": 15,
@@ -41,14 +44,16 @@
   "streetSampleMeters": 8,
   "minRoadLengthMeters": 35,
   "streets": {
-    "downtown": { "spacing": [85, 110], "width": 10, "warpAmp": 0, "warpWavelength": 400, "dropChance": 0, "angleJitterDeg": 0, "align": "arterial" },
-    "commercial": { "spacing": [110, 150], "width": 9, "warpAmp": 3, "warpWavelength": 500, "dropChance": 0.04, "angleJitterDeg": 4, "align": "arterial" },
-    "residential": { "spacing": [95, 165], "width": 8, "warpAmp": 9, "warpWavelength": 450, "dropChance": 0.07, "angleJitterDeg": 8, "align": "field" },
+    "downtown": { "spacing": [85, 110], "width": 10, "warpAmp": 0, "warpWavelength": 400, "dropChance": 0, "angleJitterDeg": 0, "align": "field" },
+    "commercial": { "spacing": [110, 150], "width": 9, "warpAmp": 3, "warpWavelength": 500, "dropChance": 0.04, "angleJitterDeg": 0, "align": "field" },
+    "residential": { "spacing": [95, 165], "width": 8, "warpAmp": 3, "warpWavelength": 450, "dropChance": 0.07, "angleJitterDeg": 0, "align": "field" },
     "suburban": { "spacing": [130, 185], "width": 7, "warpAmp": 34, "warpWavelength": 380, "dropChance": 0.3, "angleJitterDeg": 90, "align": "random" },
+    "industrial": { "spacing": [180, 260], "width": 11, "warpAmp": 0, "warpWavelength": 500, "dropChance": 0.25, "angleJitterDeg": 0, "align": "field" },
     "rural": { "spacing": [650, 900], "width": 6, "warpAmp": 60, "warpWavelength": 900, "dropChance": 0.55, "angleJitterDeg": 90, "align": "random" }
   },
   "culDeSacRadius": 11,
-  "blocks": { "minAreaM2": 150, "simplifyMeters": 2.6, "plazaChance": 0.04 },
+  "nav": { "gridCell": 4, "snapMeters": 6 },
+  "blocks": { "minAreaM2": 150, "simplifyMeters": 2.6, "plazaChance": 0.04, "parkChance": { "commercial": 0.02, "residential": 0.04, "suburban": 0.03 } },
   "lots": {
     "splitJitter": 0.15,
     "maxDepth": 11,
@@ -56,6 +61,7 @@
     "commercial": { "targetArea": 2600, "minWidth": 22 },
     "residential": { "targetArea": 650, "minWidth": 14 },
     "suburban": { "targetArea": 1100, "minWidth": 18 },
+    "industrial": { "targetArea": 6000, "minWidth": 40 },
     "rural": { "targetArea": 25000, "minWidth": 40 }
   },
   "buildings": {
@@ -64,6 +70,7 @@
     "commercial": { "chance": 0.9, "coverage": [0.55, 0.85], "maxSide": 55 },
     "residential": { "chance": 0.88, "coverage": [0.45, 0.65], "maxSide": 16 },
     "suburban": { "chance": 0.82, "coverage": [0.35, 0.55], "maxSide": 20 },
+    "industrial": { "chance": 0.85, "coverage": [0.5, 0.75], "maxSide": 110 },
     "rural": { "chance": 0.3, "coverage": [0.06, 0.15], "maxSide": 24 }
   },
   "landmarkSpacingMeters": { "hospital": 2000, "police": 1500, "helipad": 2000, "armory": 2000, "radio_tower": 2000, "school": 900, "gas_station": 700 },
@@ -72,6 +79,7 @@
     "commercial": { "gas_station": 0.28, "police": 0.1, "hospital": 0.06, "school": 0.08, "armory": 0.03 },
     "residential": { "school": 0.2, "gas_station": 0.12, "police": 0.04 },
     "suburban": { "school": 0.12, "gas_station": 0.1 },
+    "industrial": { "armory": 0.08, "gas_station": 0.1, "radio_tower": 0.06 },
     "rural": { "gas_station": 0.05, "radio_tower": 0.05, "armory": 0.03 }
   }
 }

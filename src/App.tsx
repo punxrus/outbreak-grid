@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import PROCGEN from './config/procgen.json';
 import RENDER from './config/render.json';
 import { densityToImageData, type DensityGrid } from './geo/density';
 import { RegionPack } from './geo/pack';
+import { ChunkStore } from './procgen/chunkStore';
 import type { Place, TacticalLayers } from './geo/types';
 import { GameMap, type FlyTarget } from './render/GameMap';
 import type { Lod } from './render/layers';
+import { buildProcLayers } from './render/procLayers';
 import { fitBounds } from './render/view';
 import { PlaceSearch } from './ui/PlaceSearch';
 
@@ -35,9 +38,34 @@ function Game({ pack }: { pack: RegionPack }) {
   const [flyTo, setFlyTo] = useState<FlyTarget | null>(null);
   const [showCredits, setShowCredits] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
+  const [showDistricts, setShowDistricts] = useState(false);
+  const [chunkVersion, setChunkVersion] = useState(0);
+  const [viewRect, setViewRect] = useState<[number, number, number, number] | null>(null);
+  // Created in an effect (not useMemo) so StrictMode's mount/unmount/mount
+  // in dev does not leave us holding a store whose workers were terminated.
+  const [store, setStore] = useState<ChunkStore | null>(null);
+  useEffect(() => {
+    const s = new ChunkStore(STATE, setChunkVersion);
+    setStore(s);
+    (window as unknown as { __chunks?: ChunkStore }).__chunks = s; // debug hook
+    return () => s.dispose();
+  }, []);
 
   const autoLod: Lod = zoom >= RENDER.lod.tacticalMinZoom ? 'tactical' : 'strategic';
   const lod: Lod = lodMode === 'auto' ? autoLod : lodMode;
+  const procgenOn = lod === 'tactical' && zoom >= PROCGEN.minZoom;
+
+  const [tooWide, setTooWide] = useState(false);
+  useEffect(() => {
+    if (!viewRect || !store) return;
+    if (procgenOn) setTooWide(!store.setView(viewRect));
+    else { store.setView([0, 0, -1, -1]); setTooWide(false); }
+  }, [viewRect, procgenOn, store]);
+  const zoomBucket = Math.round(zoom * 4) / 4;
+  const procLayers = useMemo(
+    () => (procgenOn && store ? buildProcLayers(store.visible(), { districts: showDistricts, zoom: zoomBucket }) : []),
+    [procgenOn, chunkVersion, viewRect, showDistricts, zoomBucket, store],
+  );
 
   // Lazy-load the fine LOD the first time it is needed.
   useEffect(() => {
@@ -78,6 +106,7 @@ function Game({ pack }: { pack: RegionPack }) {
       setFlyTo({ x: p.x + Number(q.get('dx') ?? 0), y: p.y + Number(q.get('dy') ?? 0), zoom: z, key: Date.now(), instant: true });
     }
     if (q.get('density') === '1') setShowDensity(true);
+    if (q.get('districts') === '1') setShowDistricts(true);
     const lodQ = q.get('lod');
     if (lodQ === 'strategic' || lodQ === 'tactical') setLodMode(lodQ);
   }, [pack]);
@@ -87,6 +116,7 @@ function Game({ pack }: { pack: RegionPack }) {
       if (e.target instanceof HTMLInputElement) return;
       const k = e.key.toLowerCase();
       if (k === 'd') setShowDensity((v) => !v);
+      else if (k === 'g') setShowDistricts((v) => !v);
       else if (k === 'l') setLodMode((m) => (m === 'auto' ? 'strategic' : m === 'strategic' ? 'tactical' : 'auto'));
       else if (k === 'f') fit();
       else if (k === '/') { e.preventDefault(); searchRef.current?.focus(); }
@@ -117,6 +147,8 @@ function Game({ pack }: { pack: RegionPack }) {
         flyTo={flyTo}
         onZoom={setZoom}
         onHover={setHover}
+        procgen={procLayers}
+        onView={setViewRect}
       />
 
       <header className="topbar">
@@ -130,6 +162,12 @@ function Game({ pack }: { pack: RegionPack }) {
           {loadingTactical && <span className="muted"> loading...</span>}
         </div>
         <div className="stat"><label>SCALE</label>{formatScale(metersPerPx)}</div>
+        {procgenOn && store && (
+          <div className="stat">
+            <label>CITY GEN</label>
+            {tooWide ? <span className="muted">zoom in</span> : <>{store.visible().length} chunks{store.pending() > 0 && <span className="muted"> +{store.pending()}</span>}</>}
+          </div>
+        )}
         <div className="spacer" />
         <PlaceSearch places={pack.places} onPick={goToPlace} inputRef={searchRef} />
       </header>
@@ -140,6 +178,9 @@ function Game({ pack }: { pack: RegionPack }) {
         </button>
         <button onClick={() => setLodMode((m) => (m === 'auto' ? 'strategic' : m === 'strategic' ? 'tactical' : 'auto'))} title="Cycle level of detail: auto / strategic / tactical (L)">
           LOD: {lodMode} <kbd>L</kbd>
+        </button>
+        <button className={showDistricts ? 'on' : ''} onClick={() => setShowDistricts((v) => !v)} title="Toggle generated district + chunk debug overlay (G)">
+          Districts <kbd>G</kbd>
         </button>
         <button onClick={fit} title="Fit the whole state (F)">
           Fit state <kbd>F</kbd>
@@ -155,7 +196,7 @@ function Game({ pack }: { pack: RegionPack }) {
             <span>{hoverInfo.land ? `land · ~${Math.round(hoverInfo.ppk).toLocaleString()} ppl/km² · density ${hoverInfo.norm.toFixed(2)}` : 'water / outside'}</span>
           </>
         ) : (
-          <span className="muted">Drag to pan · wheel to zoom · / search · D density · L LOD · F fit</span>
+          <span className="muted">Drag to pan · wheel to zoom · / search · D density · G districts · L LOD · F fit</span>
         )}
         <span className="credit">Boundary and population data: U.S. Census Bureau</span>
       </footer>

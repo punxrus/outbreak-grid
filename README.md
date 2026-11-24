@@ -4,7 +4,7 @@ Zombie auto-battler on real US geography, flat top-down 2D. The land comes from
 U.S. Census Bureau public-domain data. Everything built on it will be
 procedurally generated from a seed (from M2 on).
 
-**Status: Milestone 1** (skeleton, Census pack pipeline, 2D map with both LODs, density debug overlay).
+**Status: Milestone 2, awaiting visual sign-off** (M1 plus seeded, seam-safe city generation drawn as a wireframe, and nav export for the sim).
 
 ## Run it
 
@@ -16,7 +16,10 @@ npm test                          # unit + pack integrity tests
 ```
 
 Controls: drag to pan, wheel to zoom, `/` search places, `D` density overlay,
-`L` cycle LOD (auto / strategic / tactical), `F` fit state.
+`G` generated districts + chunk grid, `L` cycle LOD (auto / strategic / tactical), `F` fit state.
+City generation starts below about 5 m/px (`procgen.json` → `minZoom`).
+
+Dev deep links: `?place=Seattle&zoom=-1.6&dx=0&dy=0&density=1&districts=1&lod=tactical`.
 
 Desktop build (needs the Rust toolchain, see Known issues):
 
@@ -33,13 +36,16 @@ npm run tauri build               # → src-tauri/target/release/bundle/{msi,nsi
 | `tools/geo-build/` | Offline Node CLI: Census downloads → clip/erase/simplify (mapshaper) → region pack |
 | `tools/geo-build/config.json` | All pipeline tunables (simplify tolerances, water filters, density grid) |
 | `src/geo/` | Pack loading (`RegionPack`), `DensityGrid`, pack types |
-| `src/render/` | deck.gl map (`GameMap`), layer stack, label declutter, view fitting |
+| `src/procgen/` | City generation: districts, roads, blocks, lots, buildings, landmarks, nav export; worker + chunk store |
+| `src/config/procgen.json` | All generation tunables (densities, street grids, lots, buildings, landmarks, nav) |
+| `src/render/` | deck.gl map (`GameMap`), layer stack, wireframe layers (`procLayers.ts`), label declutter, view fitting |
 | `src/ui/` | HUD pieces (place search) and styles |
 | `src/config/render.json` | Colors, LOD thresholds, label rules, line styles |
 | `src-tauri/` | Tauri 2 shell (no network, no shell permissions) |
-| `tests/` | Vitest: PL parsing, rasterizer, density grid, labels, pack integrity |
+| `tests/` | Vitest: PL parsing, rasterizer, density grid, labels, pack integrity, procgen determinism/seams/nav |
+| `tools/procgen-smoke/` | Node loader for a built pack + `run.ts` smoke/timing script (`npx tsx tools/procgen-smoke/run.ts -v`) |
 
-Empty module folders (`procgen/`, `sim/`, `economy/`, `progression/`, `save/`) get created in the milestones that fill them.
+Empty module folders (`sim/`, `economy/`, `progression/`, `save/`) get created in the milestones that fill them.
 
 ## Region pack format (`public/packs/<state>/`)
 
@@ -81,6 +87,56 @@ work in the same space.
    one at a time because www2.census.gov rate-limits parallel requests (HTTP 429).
 6. **Dev port 5180** (5173 is used by another project in this folder).
 
+## M2: city generation
+
+Each 1 km chunk is a pure function of `(seed, real geography, cx, cy)`, made in
+a Web Worker (`src/procgen/worker.ts`, 2–4 workers) at about 70–250 ms per chunk.
+
+Pipeline (`src/procgen/chunk.ts`): district sites (density-weighted, keyed per
+chunk) → Voronoi districts → arterials (relative-neighborhood graph + Gabriel
+loops) → collectors (on district borders) → street grids → water crossings
+(bridges, island ferries) → blocks from a 2 m raster → lots (recursive OBB
+split) → buildings → landmarks → nav export.
+
+**Seams are exact.** Tests check that every road and nav node crossing a chunk
+edge meets its neighbor to the millimeter. What makes it work:
+- The site set reaches the longest arterial (4 km) plus the margin, so every
+  edge or cell a chunk uses is decided by sites that are all present.
+- Roads are clipped to the chunk, *then* simplified (Douglas–Peucker keeps endpoints).
+- Everything per edge is oriented by site id, never by Delaunay index.
+- Land tests use a global 10 m tile cache on the same lattice as the region rasters.
+
+### Decisions made in M2 (flag anything you want changed)
+
+1. **Wireframe look** (your request): blocks, buildings, parks and forests are
+   stroked outlines with no fill. Blocks are inset by road width, so the roads
+   read as the gaps between block outlines. Arterials and collectors also get a
+   faint dashed centerline. Bridges are solid; chokepoint bridges (≥25 m) are red.
+2. **Coherent street grids**: grid districts take their angle from a shared
+   low-frequency field, snapped to 6°. Their lattice is anchored to the world
+   per (type, angle zone), so streets run straight through neighboring
+   districts. Arterials inside a shared grid follow two lattice lines (an L),
+   which turns existing streets into avenues instead of cutting diagonals.
+   Suburbs and rural areas keep per-district curvy layouts.
+3. **Downtown needs a city core.** Census density counts residents, so dense
+   residential areas (Capitol Hill) look like downtowns while mid-size downtowns
+   (Spokane) look residential. Downtown therefore requires being within
+   `52 m × √(pop/1000)` of a real place's center (Seattle ≈ 1.4 km). Tiers step
+   up inside cores and drop to commercial outside them.
+4. **New district type `industrial`**: low residential density inside city
+   limits, within 2.5 core radii of a city of 20k+ people (ports, rail yards).
+   Warehouse-sized footprints.
+5. **Parks are mostly block-level** (pocket parks). District-wide parks are rare
+   (1–2%), because at 7 sites/km² a park district is about 0.15 km².
+6. **Landmarks have per-type spacing** (hospital 2 km, police 1.5 km, school
+   0.9 km, …), decided the same way in every chunk.
+7. **Nav export** (`ChunkData.nav`, kept in the worker for the M3 sim): a 4 m
+   walk grid (water / open / road / blocked by building) for flow fields, plus a
+   road graph with real intersections, T-junction snapping, edge kind, length,
+   chokepoint flag, and border nodes for stitching chunks together.
+8. **Generation moved into workers now** instead of waiting for M3: on the
+   main thread, a 100–250 ms chunk would freeze the UI.
+
 ## Known issues / risks
 
 - **Tauri not verified yet**: Rust isn't installed on this machine. The
@@ -97,6 +153,14 @@ work in the same space.
 - **Tactical LOD loads the whole state at once** (~1.1M vertices, decoded on
   the main thread on first zoom-in). This is fine for M1. M3 moves geometry
   to chunked, worker-decoded tiles.
+- **Wireframe performance on a real GPU hasn't been measured.** This was
+  checked headless with software WebGL, where even the M1 tactical view runs
+  at 0.3 fps. It needs a pass on real hardware: about 80 chunks × 2 path
+  layers at the closest zoom-out.
+- **Shoreline arterials** sometimes become a string of tiny bridges where a
+  road runs along a ragged coast. Cosmetic for now; merge in M3.
+- **Building fill downtown is about 85% of lots** (target 97%): footprints that
+  can't fit an irregular lot after 5 shrink attempts are skipped.
 - deck.gl's `CollisionFilterExtension` hid labels in this deck.gl/luma
   version, so labels use a small CPU declutter instead (`src/render/labels.ts`).
 

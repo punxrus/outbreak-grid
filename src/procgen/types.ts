@@ -1,6 +1,7 @@
 import type { Pt, Ring } from './geom';
+import type { ChunkNav } from './nav';
 
-export type DistrictType = 'downtown' | 'commercial' | 'residential' | 'suburban' | 'rural' | 'forest' | 'park';
+export type DistrictType = 'downtown' | 'commercial' | 'residential' | 'suburban' | 'industrial' | 'rural' | 'forest' | 'park';
 
 export type RoadKind = 'arterial' | 'collector' | 'street' | 'rural' | 'bridge' | 'ferry';
 
@@ -61,5 +62,6 @@ export interface ChunkData {
   buildings: Building[];
   landmarks: Landmark[];
   districts: DistrictPatch[];
-  stats: { ms: number; sites: number; roads: number; blocks: number; lots: number; buildings: number };
+  nav: ChunkNav;
+  stats: { ms: number; sites: number; roads: number; blocks: number; lots: number; buildings: number; navNodes: number; navEdges: number };
 }

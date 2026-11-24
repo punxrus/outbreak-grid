@@ -3,6 +3,7 @@ import { drawThickPolyline, fillDisc } from '../geo/rasterize';
 import { buildingFor, extractBlocks, splitLots } from './blocks';
 import { LAND, ROAD, maskAt, type GeoContext } from './context';
 import { buildDistricts } from './districts';
+import { buildRoadGraph, buildWalkGrid } from './nav';
 import {
   bboxOf, clipPolylineToRect, clipRingToRect, rectContains, rectsOverlap, ringArea, ringCentroid, simplifyLine,
   type Pt, type Rect, type Ring,
@@ -31,19 +32,9 @@ export function generateChunk(ctx: GeoContext, cx: number, cy: number): ChunkDat
   const ds = buildDistricts(ctx, cx, cy);
   const cells: (Ring | null)[] = ds.sites.map((_, i) => ds.cell(i) as Ring | null);
 
-  // 2. Arterials, and street orientation from the longest incident arterial
+  // 2. Street orientation (needed first: same-grid arterials follow the lattice), then arterials
+  for (const s of ds.sites) s.angle = districtAngle(seed, s, []);
   const arterials = buildArterials(ctx, ds, outer, cells);
-  const longest = new Map<number, { len: number; angle: number }>();
-  for (const e of arterials) {
-    const a = ds.sites[e.i]!, b = ds.sites[e.j]!;
-    const len = Math.hypot(b.x - a.x, b.y - a.y);
-    const angle = ((Math.atan2(b.y - a.y, b.x - a.x) % (Math.PI / 2)) + Math.PI / 2) % (Math.PI / 2);
-    for (const s of [e.i, e.j]) if ((longest.get(s)?.len ?? 0) < len) longest.set(s, { len, angle });
-  }
-  ds.sites.forEach((s, i) => {
-    const l = longest.get(i);
-    s.angle = districtAngle(seed, s, l ? [l.angle] : []);
-  });
 
   // 3. Chunk rasters at 2 m: land only (street placement) and land minus streams (bridges/blocks)
   const landOnly = ctx.rasterize(outer, PROCGEN.raster.cell, false);
@@ -60,7 +51,7 @@ export function generateChunk(ctx: GeoContext, cx: number, cy: number): ChunkDat
       else fixed.push(piece);
     }
   }
-  for (const pts of buildCollectors(ds, outer)) raw.push({ kind: 'collector', width: PROCGEN.collectors.width, pts });
+  for (const pts of buildCollectors(seed, ds, outer)) raw.push({ kind: 'collector', width: PROCGEN.collectors.width, pts });
   ds.sites.forEach((s, i) => {
     const cell = cells[i];
     if (cell) raw.push(...buildStreets(seed, s, cell, outer, landOnly));
@@ -94,9 +85,10 @@ export function generateChunk(ctx: GeoContext, cx: number, cy: number): ChunkDat
     const [bx, by] = ringCentroid(block);
     const type = typeAt(bx, by);
     if (type === 'forest') { forests.push(block); continue; }
-    const plaza = (type === 'downtown' || type === 'commercial') &&
-      unit(seed, SALT.plaza, Math.round(bx), Math.round(by)) < PROCGEN.blocks.plazaChance;
-    if (type === 'park' || plaza) { parks.push(block); continue; }
+    const roll = unit(seed, SALT.plaza, Math.round(bx), Math.round(by));
+    const plaza = type === 'downtown' && roll < PROCGEN.blocks.plazaChance;
+    const pocketPark = roll < ((PROCGEN.blocks.parkChance as Record<string, number>)[type] ?? 0);
+    if (type === 'park' || plaza || pocketPark) { parks.push(block); continue; }
     blocks.push(block);
     for (const lot of splitLots(seed, block, type)) {
       lots.push(lot);
@@ -153,6 +145,7 @@ export function generateChunk(ctx: GeoContext, cx: number, cy: number): ChunkDat
     if (ring.length >= 3) districts.push({ id: s.id, type: s.type, ring });
   });
   const finalBuildings = buildings.filter((b): b is Building => b !== null);
+  const nav = { ...buildWalkGrid(chunkR, rect, finalBuildings), ...buildRoadGraph(outRoads, rect) };
 
   return {
     key: chunkKey(cx, cy),
@@ -163,6 +156,7 @@ export function generateChunk(ctx: GeoContext, cx: number, cy: number): ChunkDat
     buildings: finalBuildings,
     landmarks,
     districts,
+    nav,
     stats: {
       ms: Math.round(performance.now() - t0),
       sites: ds.sites.filter((s) => rectContains(rect, s.x, s.y)).length,
@@ -170,6 +164,8 @@ export function generateChunk(ctx: GeoContext, cx: number, cy: number): ChunkDat
       blocks: blocks.length,
       lots: lots.length,
       buildings: finalBuildings.length,
+      navNodes: nav.nodes.length / 2,
+      navEdges: nav.edgeKind.length,
     },
   };
 }
@@ -188,11 +184,15 @@ export function pickLandmark(seed: number, type: DistrictType, id: number): { ty
 
 /** Stable content hash of a chunk (ignores timing), for determinism tests. */
 export function chunkHash(c: ChunkData): string {
-  const { stats, ...rest } = c;
+  const { stats, nav, ...rest } = c;
   const { ms: _ms, ...counts } = stats;
   const json = JSON.stringify({ ...rest, counts }, (_k, v) => (typeof v === 'number' ? Math.round(v * 1000) / 1000 : v));
   let h = 0x811c9dc5;
   for (let i = 0; i < json.length; i++) { h ^= json.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+  for (const arr of [nav.grid, nav.edges, nav.edgeKind, nav.border, new Uint8Array(nav.nodes.buffer)]) {
+    const bytes = new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength);
+    for (let i = 0; i < bytes.length; i++) { h ^= bytes[i]!; h = Math.imul(h, 0x01000193); }
+  }
   return (h >>> 0).toString(16).padStart(8, '0') + ':' + json.length;
 }
 

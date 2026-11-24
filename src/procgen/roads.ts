@@ -12,7 +12,8 @@ import type { DistrictType, Road, RoadKind } from './types';
 const A = PROCGEN.arterials;
 type StreetParams = (typeof PROCGEN.streets)['downtown'];
 const STREETS = PROCGEN.streets as Record<string, StreetParams | undefined>;
-const COLLECTOR_TYPES = new Set<DistrictType>(['downtown', 'commercial', 'residential', 'suburban']);
+const COLLECTOR_TYPES = new Set<DistrictType>(['downtown', 'commercial', 'residential', 'suburban', 'industrial']);
+const TYPE_INDEX: Partial<Record<DistrictType, number>> = { downtown: 1, commercial: 2, residential: 3, suburban: 4, rural: 5, industrial: 6 };
 
 export interface ArterialEdge { i: number; j: number; rng: boolean; pieces: Road[] }
 
@@ -70,10 +71,16 @@ export function buildArterials(ctx: GeoContext, ds: DistrictSet, near: Rect, cel
     const loopP = A.loopChanceMin + (A.loopChanceMax - A.loopChanceMin) * ((p.density + q.density) / 2) ** 2;
     if (!rng && !(gabriel && unit(ctx.seed, SALT.edge, lo, hi) < loopP)) continue;
 
-    // Gentle curve: quadratic Bezier with a hashed perpendicular offset.
     // Everything is oriented lower id -> higher id (never by Delaunay index,
     // which differs between chunks), so both sides bend and sample identically.
     const [a, b] = p.id <= q.id ? [p, q] : [q, p];
+    const grid = sameGrid(ctx.seed, a, b);
+    if (grid) {
+      const pieces = classifyWater(ctx, gridArterial(ctx.seed, grid, a, b, lo, hi), rng, lo, hi, a, b);
+      if (pieces) out.push({ i, j, rng, pieces });
+      continue;
+    }
+    // Gentle curve: quadratic Bezier with a hashed perpendicular offset.
     const off = (unit(ctx.seed, SALT.edgeCurve, lo, hi) - 0.5) * 2 * A.curve * d;
     const nx = -(b.y - a.y) / d, ny = (b.x - a.x) / d;
     const c: Pt = [mx + nx * off, my + ny * off];
@@ -120,7 +127,7 @@ function classifyWater(
 }
 
 /** Collectors follow Voronoi edges between two urban-ish districts. */
-export function buildCollectors(ds: DistrictSet, region: Rect): Pt[][] {
+export function buildCollectors(seed: number, ds: DistrictSet, region: Rect): Pt[][] {
   const { sites, delaunay } = ds;
   const { triangles, halfedges } = delaunay;
   const cc = ds.circumcenters;
@@ -131,6 +138,7 @@ export function buildCollectors(ds: DistrictSet, region: Rect): Pt[][] {
     if (twin === -1 || twin < e) continue;
     const si = sites[triangles[e]!]!, sj = sites[triangles[e % 3 === 2 ? e - 2 : e + 1]!]!;
     if (!COLLECTOR_TYPES.has(si.type) || !COLLECTOR_TYPES.has(sj.type)) continue;
+    if (sameGrid(seed, si, sj)) continue; // the shared grid already runs through
     const t1 = Math.floor(e / 3), t2 = Math.floor(twin / 3);
     const seg: Pt[] = [[cc[2 * t1]!, cc[2 * t1 + 1]!], [cc[2 * t2]!, cc[2 * t2 + 1]!]];
     for (const run of clipPolylineToRect(seg, region)) if (polylineLength(run) > 1) out.push(densify(run, 25));
@@ -145,7 +153,63 @@ export function districtAngle(seed: number, site: DistrictSet['sites'][number], 
   const jitter = (unit(seed, SALT.angle, site.id) - 0.5) * 2 * ((p.angleJitterDeg * Math.PI) / 180);
   if (p.align === 'arterial' && arterialAngles.length) return arterialAngles[0]! + jitter;
   if (p.align === 'random') return unit(seed, SALT.angle, site.id, 7) * Math.PI;
-  return fieldAngle(seed, site.x, site.y) + jitter;
+  // Snap to a coarse step (mod 90 deg) so neighboring districts usually share an
+  // exact orientation and their world-anchored grids line up.
+  const step = (PROCGEN.districts.gridAngleStepDeg * Math.PI) / 180;
+  const a = fieldAngle(seed, site.x, site.y) + jitter;
+  return ((Math.round(a / step) * step) % (Math.PI / 2) + Math.PI / 2) % (Math.PI / 2);
+}
+
+/** Street lattice of a district: axes, spacing, phase, and whether it is world-anchored. */
+export interface GridFrame {
+  gid: number; world: boolean; ox: number; oy: number;
+  ux: number; uy: number; vx: number; vy: number;
+  sx: number; sy: number; phaseU: number; phaseV: number;
+}
+
+export function gridFrame(seed: number, site: DistrictSet['sites'][number]): GridFrame | null {
+  const p = STREETS[site.type];
+  if (!p) return null;
+  const ux = Math.cos(site.angle), uy = Math.sin(site.angle);
+  // Field-aligned grids are anchored to the world and keyed by (type, angle
+  // zone), so the same street continues straight through neighboring districts.
+  // Other grids (suburban curves, rural) are local to the district.
+  const world = p.align === 'field';
+  const step = (PROCGEN.districts.gridAngleStepDeg * Math.PI) / 180;
+  const gid = world ? 0x40000000 + TYPE_INDEX[site.type]! * 4096 + Math.round(site.angle / step) : site.id;
+  const sx = p.spacing[0]! * (0.9 + 0.2 * unit(seed, SALT.street, gid, 1));
+  const sy = p.spacing[1]! * (0.9 + 0.2 * unit(seed, SALT.street, gid, 2));
+  return {
+    gid, world, ox: world ? 0 : site.x, oy: world ? 0 : site.y,
+    ux, uy, vx: -uy, vy: ux, sx, sy,
+    phaseU: unit(seed, SALT.street, gid, 3) * sx,
+    phaseV: unit(seed, SALT.street, gid, 4) * sy,
+  };
+}
+
+/**
+ * Arterial between two districts on the same world grid: an L along two
+ * lattice lines, so it widens existing streets instead of cutting diagonally.
+ */
+function gridArterial(seed: number, g: GridFrame, a: { x: number; y: number }, b: { x: number; y: number }, lo: number, hi: number): Pt[] {
+  const toUV = (p: { x: number; y: number }) => [(p.x - g.ox) * g.ux + (p.y - g.oy) * g.uy, (p.x - g.ox) * g.vx + (p.y - g.oy) * g.vy] as const;
+  const snap = (v: number, s: number, ph: number) => Math.round((v - ph) / s) * s + ph;
+  const [ua, va] = toUV(a), [ub, vb] = toUV(b);
+  const uFirst = unit(seed, SALT.edgeCurve, lo, hi, 9) < 0.5;
+  // corner on (u line through a, v line through b) or the transpose
+  const pts: [number, number][] = uFirst
+    ? [[snap(ua, g.sx, g.phaseU), va], [snap(ua, g.sx, g.phaseU), snap(vb, g.sy, g.phaseV)], [ub, snap(vb, g.sy, g.phaseV)]]
+    : [[ua, snap(va, g.sy, g.phaseV)], [snap(ub, g.sx, g.phaseU), snap(va, g.sy, g.phaseV)], [snap(ub, g.sx, g.phaseU), vb]];
+  const world = pts.map(([u, v]) => [g.ox + u * g.ux + v * g.vx, g.oy + u * g.uy + v * g.vy] as Pt);
+  return densify(world, A.sampleMeters);
+}
+
+/** True when two districts share one world-anchored street lattice. */
+export function sameGrid(seed: number, p: DistrictSet['sites'][number], q: DistrictSet['sites'][number]): GridFrame | null {
+  const gp = gridFrame(seed, p);
+  if (!gp?.world) return null;
+  const gq = gridFrame(seed, q);
+  return gq && gq.gid === gp.gid ? gp : null;
 }
 
 /**
@@ -159,20 +223,14 @@ export function buildStreets(
   if (!p) return [];
   const cb = bboxOf(cell);
   if (!rectsOverlap(cb, region)) return [];
-  const ux = Math.cos(site.angle), uy = Math.sin(site.angle);
-  const vx = -uy, vy = ux;
-  const sx = p.spacing[0]! * (0.9 + 0.2 * unit(seed, SALT.street, site.id, 1));
-  const sy = p.spacing[1]! * (0.9 + 0.2 * unit(seed, SALT.street, site.id, 2));
-  const phaseU = unit(seed, SALT.street, site.id, 3) * sx;
-  const phaseV = unit(seed, SALT.street, site.id, 4) * sy;
+  const { gid, ox, oy, ux, uy, vx, vy, sx, sy, phaseU, phaseV } = gridFrame(seed, site)!;
   // cell extent in (u, v)
   let u0 = Infinity, u1 = -Infinity, v0 = Infinity, v1 = -Infinity;
   for (const [x, y] of cell) {
-    const dx = x - site.x, dy = y - site.y;
+    const dx = x - ox, dy = y - oy;
     const u = dx * ux + dy * uy, v = dx * vx + dy * vy;
     u0 = Math.min(u0, u); u1 = Math.max(u1, u); v0 = Math.min(v0, v); v1 = Math.max(v1, v);
   }
-  const step = PROCGEN.streetSampleMeters;
   const kind: RoadKind = site.type === 'rural' ? 'rural' : 'street';
   const out: { kind: RoadKind; width: number; pts: Pt[] }[] = [];
 
@@ -182,19 +240,21 @@ export function buildStreets(
       fam === 0 ? [u0, u1, sx, phaseU, v0, v1, sy, phaseV] : [v0, v1, sy, phaseV, u0, u1, sx, phaseU];
     for (let k = Math.ceil((aMin - phA) / sA); k <= Math.floor((aMax - phA) / sA); k++) {
       const a = k * sA + phA;
-      const phase = unit(seed, SALT.street, site.id, fam, k) * Math.PI * 2;
+      const phase = unit(seed, SALT.street, gid, fam, k) * Math.PI * 2;
       let run: Pt[] = [];
       const flush = () => {
         if (run.length > 1 && polylineLength(run) >= PROCGEN.minRoadLengthMeters) out.push({ kind, width: p.width, pts: run });
         run = [];
       };
-      for (let b = bMin; b <= bMax + 1e-6; b += step) {
+      // samples on a lattice anchored at b = 0, so every district walks the same points
+      const sStep = PROCGEN.streetSampleMeters;
+      for (let b = Math.ceil(bMin / sStep) * sStep; b <= bMax + 1e-6; b += sStep) {
         const warp = p.warpAmp * Math.sin((2 * Math.PI * b) / p.warpWavelength + phase);
         const aw = a + warp;
         const [u, v] = fam === 0 ? [aw, b] : [b, aw];
-        const x = site.x + u * ux + v * vx, y = site.y + u * uy + v * vy;
+        const x = ox + u * ux + v * vx, y = oy + u * uy + v * vy;
         const interval = Math.floor((b - phB) / sB);
-        const dropped = p.dropChance > 0 && unit(seed, SALT.streetDrop, site.id, fam, k, interval) < p.dropChance;
+        const dropped = p.dropChance > 0 && unit(seed, SALT.streetDrop, gid, fam, k, interval) < p.dropChance;
         const inside = !dropped && rectContains(region, x, y) && pointInRing(x, y, cell) && maskAt(landOnly, x, y) === LAND;
         if (inside) run.push([x, y]);
         else flush();

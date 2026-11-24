@@ -45,16 +45,40 @@ export function chunkSites(ctx: GeoContext, cx: number, cy: number): Site[] {
     if (unit(ctx.seed, SALT.siteAccept, cx, cy, i) >= siteRate(density) / maxRate) continue;
     const inCity = ctx.inCity(x, y);
     const id = hashId(cx, cy, i);
-    out.push({ id, x, y, density, inCity, type: assignType(ctx.seed, id, density, inCity), angle: 0 });
+    out.push({ id, x, y, density, inCity, type: assignType(ctx.seed, id, density, inCity, coreness(ctx, x, y)), angle: 0 });
   }
   cache.set(key, out);
   return out;
 }
 
-function assignType(seed: number, id: number, density: number, inCity: boolean): DistrictType {
+/**
+ * How deep inside a city core a point is: 0 at the core radius, 1 at the center.
+ * Census density counts residents, so dense residential areas look like a
+ * downtown; the core radius (grows with sqrt(population)) separates them.
+ */
+export function coreness(ctx: GeoContext, x: number, y: number): number {
+  const K = D.downtownCore, reach = D.industrialWithinCoreRadii;
+  let best = 1 - reach - 1; // "far from every core"
+  for (const c of ctx.centers) {
+    if (c.pop < K.minPop) continue;
+    const r = K.metersPerSqrtThousand * Math.sqrt(c.pop / 1000);
+    const dx = x - c.x, dy = y - c.y;
+    if (Math.abs(dx) > r * reach || Math.abs(dy) > r * reach) continue;
+    best = Math.max(best, 1 - Math.hypot(dx, dy) / r);
+  }
+  return best; // 1 at a center, 0 at the core radius, 1 - reach at the industrial limit
+}
+
+function assignType(seed: number, id: number, density: number, inCity: boolean, core: number): DistrictType {
   const jitter = (unit(seed, SALT.siteType, id) - 0.5) * 2 * D.typeJitter;
   const t = density + jitter - (inCity ? 0 : D.outsideCityPenalty);
-  const type = districtTypeFor(t);
+  let type = districtTypeFor(t);
+  // Mid-size downtowns have few residents, so inside a core, step up by tier.
+  if (type === 'downtown' && core < 0) type = 'commercial';
+  else if ((type === 'commercial' || type === 'residential') && core >= D.downtownCore.promoteWithin) type = 'downtown';
+  else if ((type === 'residential' || type === 'suburban') && core >= 0) type = 'commercial';
+  // Low residential density near a city core is rail yards, ports, warehouses.
+  else if (inCity && (type === 'rural' || type === 'forest') && core > 1 - D.industrialWithinCoreRadii) type = 'industrial';
   const parkP = (D.parkChance as Record<string, number>)[type] ?? 0;
   if (parkP > 0 && unit(seed, SALT.park, id) < parkP) return 'park';
   return type;

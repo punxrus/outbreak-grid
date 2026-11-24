@@ -22,6 +22,24 @@
     "cityLimit": 90,
     "densityOverlay": 190
   },
+  "wire": {
+    "block": "#2b4756",
+    "building": "#58c8dc",
+    "buildingAlpha": [120, 215],
+    "landmark": "#ffb347",
+    "park": "#3fae6a",
+    "forest": "#1f4d34",
+    "arterial": "#4a7d93",
+    "collector": "#35596b",
+    "bridge": "#9fb0c3",
+    "chokepoint": "#ff6b5a",
+    "ferry": "#4fb3c9",
+    "widthPx": { "block": 1, "building": 1, "landmark": 1.6, "park": 1, "forest": 1 },
+    "districtDebug": {
+      "downtown": "#ff4fd8", "commercial": "#ffb347", "residential": "#58c8dc",
+      "suburban": "#7ee07e", "industrial": "#9a8cff", "rural": "#c9b26b", "forest": "#2f7a4a", "park": "#3fae6a"
+    }
+  },
   "view": {
     "minZoom": -11,
     "maxZoom": 3,

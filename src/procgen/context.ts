@@ -21,6 +21,9 @@ export const ROAD = 2;
  * Everything procgen needs from the real world, indexed for chunk-sized queries.
  * Pure data: the same object can later be rebuilt inside a Web Worker (M3).
  */
+/** A real place's center and population (Census internal point). */
+export interface PlaceCenter { x: number; y: number; pop: number }
+
 export class GeoContext {
   readonly islands: PolyEntry[];
 
@@ -31,11 +34,15 @@ export class GeoContext {
     readonly places: PolyEntry[],
     readonly density: DensityGrid,
     islandMaxAreaM2: number,
+    readonly centers: PlaceCenter[] = [],
   ) {
     this.islands = land.filter((l) => l.areaM2 <= islandMaxAreaM2);
   }
 
-  static fromTactical(t: TacticalLayers, density: DensityGrid, seed: number, streamWidths: Record<string, number>, islandMaxAreaM2: number) {
+  static fromTactical(
+    t: TacticalLayers, density: DensityGrid, seed: number, streamWidths: Record<string, number>, islandMaxAreaM2: number,
+    centers: PlaceCenter[] = [],
+  ) {
     const land: PolyEntry[] = [];
     for (const f of t.land.features) {
       for (const rings of polygonsOf(f.geometry as never)) {
@@ -57,7 +64,7 @@ export class GeoContext {
         places.push({ rings, bbox: bboxOf(rings[0]!), areaM2: 0, name: f.properties.NAME });
       }
     }
-    return new GeoContext(seed, land, streams, places, density, islandMaxAreaM2);
+    return new GeoContext(seed, land, streams, places, density, islandMaxAreaM2, centers);
   }
 
   /** Land/water mask for a rectangle. Streams are burned in as water when `withStreams`. */

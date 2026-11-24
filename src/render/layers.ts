@@ -15,6 +15,8 @@ export interface MapLayerInput {
   lod: Lod;
   zoom: number;
   density: { image: ImageData; bounds: [number, number, number, number] } | null;
+  /** Generated-city wireframe (drawn over real land/water, under overlays and labels). */
+  procgen?: Layer[];
 }
 
 const C = RENDER.colors;
@@ -25,7 +27,7 @@ const DASH = RENDER.lines.dashArray as [number, number];
  * Build the deck.gl layer stack for the current frame. Data references stay
  * stable between calls, so deck.gl only re-tessellates when a pack loads.
  */
-export function buildLayers({ pack, tactical, lod, zoom, density }: MapLayerInput): Layer[] {
+export function buildLayers({ pack, tactical, lod, zoom, density, procgen }: MapLayerInput): Layer[] {
   const s = pack.strategic;
   const showTactical = lod === 'tactical' && tactical !== null;
   const layers: Layer[] = [];
@@ -103,6 +105,8 @@ export function buildLayers({ pack, tactical, lod, zoom, density }: MapLayerInpu
       }),
     );
   }
+
+  if (showTactical && procgen) layers.push(...procgen);
 
   // ---- Debug: population density overlay ----
   if (density) {

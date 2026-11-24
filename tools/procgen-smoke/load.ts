@@ -14,6 +14,7 @@ export function loadContext(state = 'wa', seed = PROCGEN.seed) {
   const topo = JSON.parse(readFileSync(join(dir, 'tactical.topo.json'), 'utf8')) as Topology;
   const tactical = decodeTopo(topo, manifest.layers.tactical) as unknown as TacticalLayers;
   const density = new DensityGrid(manifest.density.fine, new Uint8Array(readFileSync(join(dir, manifest.density.fine.file))), manifest.density.maxPeoplePerKm2);
-  const ctx = GeoContext.fromTactical(tactical, density, seed, manifest.streamWidthMeters, PROCGEN.arterials.islandMaxAreaKm2 * 1e6);
+  const places = JSON.parse(readFileSync(join(dir, 'places.json'), 'utf8')) as { x: number; y: number; pop: number }[];
+  const ctx = GeoContext.fromTactical(tactical, density, seed, manifest.streamWidthMeters, PROCGEN.arterials.islandMaxAreaKm2 * 1e6, places);
   return { ctx, manifest, tactical };
 }
