@@ -1,7 +1,7 @@
 import type { Pt, Ring } from './geom';
 import type { ChunkNav } from './nav';
 
-export type DistrictType = 'downtown' | 'commercial' | 'residential' | 'suburban' | 'industrial' | 'rural' | 'forest' | 'park';
+export type DistrictType = 'downtown' | 'commercial' | 'residential' | 'suburban' | 'town' | 'industrial' | 'rural' | 'forest' | 'park';
 
 export type RoadKind = 'arterial' | 'collector' | 'street' | 'rural' | 'bridge' | 'ferry';
 

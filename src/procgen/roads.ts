@@ -12,8 +12,8 @@ import type { DistrictType, Road, RoadKind } from './types';
 const A = PROCGEN.arterials;
 type StreetParams = (typeof PROCGEN.streets)['downtown'];
 const STREETS = PROCGEN.streets as Record<string, StreetParams | undefined>;
-const COLLECTOR_TYPES = new Set<DistrictType>(['downtown', 'commercial', 'residential', 'suburban', 'industrial']);
-const TYPE_INDEX: Partial<Record<DistrictType, number>> = { downtown: 1, commercial: 2, residential: 3, suburban: 4, rural: 5, industrial: 6 };
+const COLLECTOR_TYPES = new Set<DistrictType>(['downtown', 'commercial', 'residential', 'suburban', 'town', 'industrial']);
+const TYPE_INDEX: Partial<Record<DistrictType, number>> = { downtown: 1, commercial: 2, residential: 3, suburban: 4, rural: 5, industrial: 6, town: 7 };
 
 export interface ArterialEdge { i: number; j: number; rng: boolean; pieces: Road[] }
 

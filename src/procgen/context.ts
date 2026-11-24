@@ -1,9 +1,10 @@
 import type { DensityGrid } from '../geo/density';
 import { buildEdgeBands, drawThickPolyline, fillBanded, fillPolygon, makeGrid, polygonsOf, type EdgeBands, type Grid } from '../geo/rasterize';
 import type { TacticalLayers } from '../geo/types';
-import { bboxOf, pointInPolygon, rectContains, rectsOverlap, type Rect } from './geom';
+import { bboxOf, pointInPolygon, rectContains, rectsOverlap, ringArea, ringCentroid, type Rect } from './geom';
+import PROCGEN from '../config/procgen.json';
 
-interface PolyEntry { rings: number[][][]; bbox: Rect; areaM2: number; name: string | null; bands?: EdgeBands }
+interface PolyEntry { rings: number[][][]; bbox: Rect; areaM2: number; name: string | null; bands?: EdgeBands; pop?: number; cx?: number; cy?: number }
 
 /** Polygons above this many vertices get a band index for fast small rasters. */
 const BAND_MIN_VERTS = 4000;
@@ -22,7 +23,7 @@ export const ROAD = 2;
  * Pure data: the same object can later be rebuilt inside a Web Worker (M3).
  */
 /** A real place's center and population (Census internal point). */
-export interface PlaceCenter { x: number; y: number; pop: number }
+export interface PlaceCenter { x: number; y: number; pop: number; geoid?: string }
 
 export class GeoContext {
   readonly islands: PolyEntry[];
@@ -61,7 +62,10 @@ export class GeoContext {
     const places: PolyEntry[] = [];
     for (const f of t.places.features) {
       for (const rings of polygonsOf(f.geometry as never)) {
-        places.push({ rings, bbox: bboxOf(rings[0]!), areaM2: 0, name: f.properties.NAME });
+        // rings[0] outer, the rest holes
+        const areaM2 = Math.abs(ringArea(rings[0] as never)) - rings.slice(1).reduce((a, r) => a + Math.abs(ringArea(r as never)), 0);
+        const [pcx, pcy] = ringCentroid(rings[0] as never);
+        places.push({ rings, bbox: bboxOf(rings[0]!), areaM2, name: f.properties.NAME, pop: f.properties.pop, cx: pcx, cy: pcy });
       }
     }
     return new GeoContext(seed, land, streams, places, density, islandMaxAreaM2, centers);
@@ -115,8 +119,38 @@ export class GeoContext {
   }
 
   inCity(x: number, y: number): boolean {
-    for (const p of this.places) if (rectContains(p.bbox, x, y) && pointInPolygon(x, y, p.rings)) return true;
-    return false;
+    return this.placeAt(x, y) !== null;
+  }
+
+  /** The incorporated place / CDP containing a point (largest population wins). */
+  placeAt(x: number, y: number): PolyEntry | null {
+    let best: PolyEntry | null = null;
+    for (const p of this.places) {
+      if (!rectContains(p.bbox, x, y) || !pointInPolygon(x, y, p.rings)) continue;
+      if (!best || (p.pop ?? 0) > (best.pop ?? 0)) best = p;
+    }
+    return best;
+  }
+
+  /**
+   * Density (0..1, same log scale as the grid) at a point, raised to the
+   * containing place's own pop/area. Rural tracts are huge, so a small town
+   * like Forks averages out to forest without this.
+   */
+  densityAt(x: number, y: number): { density: number; place: PolyEntry | null } {
+    const tract = this.density.sample(x, y);
+    const place = this.placeAt(x, y);
+    if (!place || !place.pop || place.areaM2 <= 0) return { density: tract, place };
+    const norm = (ppk: number) => Math.log1p(ppk) / Math.log1p(this.density.maxPeoplePerKm2);
+    const D = PROCGEN.districts;
+    if (place.pop < D.smallTownMaxPop) {
+      // Small towns are compact: pack the population into a core at town
+      // density; the rest of the limits (airports, fields) keeps tract density.
+      const r = Math.sqrt(place.pop / D.townPeoplePerKm2 / Math.PI) * 1000;
+      const d = Math.hypot(x - place.cx!, y - place.cy!);
+      return { density: d < r ? Math.max(tract, norm(D.townPeoplePerKm2)) : tract, place };
+    }
+    return { density: Math.max(tract, norm(place.pop / (place.areaM2 / 1e6))), place };
   }
 
   /** Index into `islands` of the island containing the point, or -1 (mainland / water). */

@@ -41,11 +41,27 @@ export function chunkSites(ctx: GeoContext, cx: number, cy: number): Site[] {
     const x = (cx + unit(ctx.seed, SALT.site, cx, cy, i, 0)) * C;
     const y = (cy + unit(ctx.seed, SALT.site, cx, cy, i, 1)) * C;
     if (ctx.coarseMaskAt(x, y) !== LAND) continue;
-    const density = Math.max(ctx.density.sample(x, y), 1 / 255);
+    const at = ctx.densityAt(x, y);
+    const density = Math.max(at.density, 1 / 255);
     if (unit(ctx.seed, SALT.siteAccept, cx, cy, i) >= siteRate(density) / maxRate) continue;
-    const inCity = ctx.inCity(x, y);
+    const inCity = at.place !== null;
+    const smallTown = inCity && (at.place!.pop ?? 0) < D.smallTownMaxPop;
     const id = hashId(cx, cy, i);
-    out.push({ id, x, y, density, inCity, type: assignType(ctx.seed, id, density, inCity, coreness(ctx, x, y)), angle: 0 });
+    out.push({ id, x, y, density, inCity, type: assignType(ctx.seed, id, density, inCity, coreness(ctx, x, y), smallTown), angle: 0 });
+  }
+  // Every town gets a district at its Census center, so it always has a
+  // main street / downtown no matter where the random sites fell.
+  for (const c of ctx.centers) {
+    if (c.pop < D.downtownCore.minPop || Math.floor(c.x / C) !== cx || Math.floor(c.y / C) !== cy) continue;
+    if (ctx.coarseMaskAt(c.x, c.y) !== LAND) continue;
+    const at = ctx.densityAt(c.x, c.y);
+    const density = Math.max(at.density, 1 / 255);
+    const inCity = at.place !== null;
+    const smallTown = inCity && (at.place!.pop ?? 0) < D.smallTownMaxPop;
+    const id = (1 << 30) | (Number(c.geoid ?? 0) & 0x3fffffff);
+    // a center is at least commercial: lift its density to that tier
+    const lifted = Math.max(density, D.tiers.find((t) => t.type === 'commercial')!.min);
+    out.push({ id, x: c.x, y: c.y, density: lifted, inCity, type: assignType(ctx.seed, id, lifted, inCity, 1, smallTown), angle: 0 });
   }
   cache.set(key, out);
   return out;
@@ -61,7 +77,7 @@ export function coreness(ctx: GeoContext, x: number, y: number): number {
   let best = 1 - reach - 1; // "far from every core"
   for (const c of ctx.centers) {
     if (c.pop < K.minPop) continue;
-    const r = K.metersPerSqrtThousand * Math.sqrt(c.pop / 1000);
+    const r = Math.max(K.minRadiusMeters, K.metersPerSqrtThousand * Math.sqrt(c.pop / 1000));
     const dx = x - c.x, dy = y - c.y;
     if (Math.abs(dx) > r * reach || Math.abs(dy) > r * reach) continue;
     best = Math.max(best, 1 - Math.hypot(dx, dy) / r);
@@ -69,7 +85,7 @@ export function coreness(ctx: GeoContext, x: number, y: number): number {
   return best; // 1 at a center, 0 at the core radius, 1 - reach at the industrial limit
 }
 
-function assignType(seed: number, id: number, density: number, inCity: boolean, core: number): DistrictType {
+function assignType(seed: number, id: number, density: number, inCity: boolean, core: number, smallTown: boolean): DistrictType {
   const jitter = (unit(seed, SALT.siteType, id) - 0.5) * 2 * D.typeJitter;
   const t = density + jitter - (inCity ? 0 : D.outsideCityPenalty);
   let type = districtTypeFor(t);
@@ -77,8 +93,12 @@ function assignType(seed: number, id: number, density: number, inCity: boolean, 
   if (type === 'downtown' && core < 0) type = 'commercial';
   else if ((type === 'commercial' || type === 'residential') && core >= D.downtownCore.promoteWithin) type = 'downtown';
   else if ((type === 'residential' || type === 'suburban') && core >= 0) type = 'commercial';
-  // Low residential density near a city core is rail yards, ports, warehouses.
-  else if (inCity && (type === 'rural' || type === 'forest') && core > 1 - D.industrialWithinCoreRadii) type = 'industrial';
+  // Low residential density near a city core is rail yards, ports, warehouses
+  // (big cities only: a small town's edge is just its edge).
+  else if (inCity && !smallTown && (type === 'rural' || type === 'forest') && core > 1 - D.industrialWithinCoreRadii) type = 'industrial';
+  // Small towns: a main street, never a downtown; homes on a platted grid.
+  if (smallTown && type === 'downtown') type = 'commercial';
+  if (smallTown && (type === 'residential' || type === 'suburban')) type = 'town';
   const parkP = (D.parkChance as Record<string, number>)[type] ?? 0;
   if (parkP > 0 && unit(seed, SALT.park, id) < parkP) return 'park';
   return type;

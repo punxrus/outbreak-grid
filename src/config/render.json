@@ -37,7 +37,7 @@
     "widthPx": { "block": 1, "building": 1, "landmark": 1.6, "park": 1, "forest": 1 },
     "districtDebug": {
       "downtown": "#ff4fd8", "commercial": "#ffb347", "residential": "#58c8dc",
-      "suburban": "#7ee07e", "industrial": "#9a8cff", "rural": "#c9b26b", "forest": "#2f7a4a", "park": "#3fae6a"
+      "suburban": "#7ee07e", "town": "#5fe0b0", "industrial": "#9a8cff", "rural": "#c9b26b", "forest": "#2f7a4a", "park": "#3fae6a"
     }
   },
   "view": {
