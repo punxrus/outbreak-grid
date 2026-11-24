@@ -121,7 +121,7 @@ export function splitLots(seed: number, ring: Ring, type: DistrictType, depth = 
 }
 
 type BuildingParams = { chance: number; coverage: number[]; maxSide: number };
-const BUILDINGS = PROCGEN.buildings as Record<string, BuildingParams | undefined>;
+const BUILDINGS = PROCGEN.buildings as unknown as Record<string, BuildingParams | undefined>;
 
 /** One flat rectangular footprint inside a lot, aligned to the lot's OBB. */
 export function buildingFor(seed: number, lot: Ring, type: DistrictType, raster: Raster, force?: { coverage: number; maxSide: number }): Building | null {
@@ -135,18 +135,21 @@ export function buildingFor(seed: number, lot: Ring, type: DistrictType, raster:
   if (obb.halfW * 2 < minW * 0.5) return null;
   const cov = force ? force.coverage : p!.coverage[0]! + (p!.coverage[1]! - p!.coverage[0]!) * rng();
   const maxHalf = (force ? force.maxSide : p!.maxSide) / 2;
-  let hl = Math.min(obb.halfL * cov, maxHalf);
-  let hw = Math.min(obb.halfW * Math.min(0.95, cov + 0.05), maxHalf);
+  // Setback from the lot edge: blocks are traced on a 2 m raster and simplified,
+  // so a footprint flush with the lot boundary would clip the road raster.
+  const SET = PROCGEN.buildings.setbackMeters;
+  let hl = Math.min((obb.halfL - SET) * cov, maxHalf);
+  let hw = Math.min((obb.halfW - SET) * Math.min(0.95, cov + 0.05), maxHalf);
   const slackL = obb.halfL - hl, slackW = obb.halfW - hw;
   const offL = (rng() - 0.5) * slackL, offW = (rng() - 0.5) * slackW;
   const shade = rng();
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (let attempt = 0; attempt < 5; attempt++) {
     const cx = obb.cx + obb.ux * offL - obb.uy * offW, cy = obb.cy + obb.uy * offL + obb.ux * offW;
     const ring = orientedRect(cx, cy, obb.ux, obb.uy, hl, hw);
     const ok = ring.every(([x, y]) => pointInRing(x, y, lot) && maskAt(raster, x, y) === LAND) && maskAt(raster, cx, cy) === LAND;
     if (ok && hl > 2 && hw > 2) return { ring, shade };
-    hl *= 0.72;
-    hw *= 0.72;
+    hl *= 0.84;
+    hw *= 0.84;
   }
   return null;
 }

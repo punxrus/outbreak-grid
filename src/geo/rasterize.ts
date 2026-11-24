@@ -26,7 +26,7 @@ export function fillPolygon(grid: Grid, rings: Ring[], out: Float32Array | Uint8
   let yMin = Infinity, yMax = -Infinity;
   for (const ring of rings) for (const p of ring) { if (p[1]! < yMin) yMin = p[1]!; if (p[1]! > yMax) yMax = p[1]!; }
   if (!(yMax > yMin)) return;
-  const { cell, maxY, minX, width, height } = grid;
+  const { cell, maxY, height } = grid;
   const r0 = Math.max(0, Math.floor((maxY - yMax) / cell - 0.5));
   const r1 = Math.min(height - 1, Math.ceil((maxY - yMin) / cell - 0.5));
   if (r1 < r0) return;
@@ -47,6 +47,65 @@ export function fillPolygon(grid: Grid, rings: Ring[], out: Float32Array | Uint8
       }
     }
   }
+  fillRows(grid, rows, r0, out, value, mode);
+}
+
+/**
+ * Polygon edges bucketed by horizontal band, so a small raster over a huge
+ * polygon (the 300k-vertex mainland) only visits edges near its rows. Each
+ * edge is stored in every band its y-span touches; a row reads only the band
+ * that contains its center, so no crossing is counted twice.
+ */
+export interface EdgeBands { size: number; bands: Map<number, Float64Array> }
+
+export function buildEdgeBands(rings: Ring[], size: number): EdgeBands {
+  const tmp = new Map<number, number[]>();
+  for (const ring of rings) {
+    const n = ring.length;
+    for (let i = 0, j = n - 1; i < n; j = i++) {
+      const ax = ring[j]![0]!, ay = ring[j]![1]!, bx = ring[i]![0]!, by = ring[i]![1]!;
+      if (ay === by) continue;
+      const b0 = Math.floor(Math.min(ay, by) / size), b1 = Math.floor(Math.max(ay, by) / size);
+      for (let b = b0; b <= b1; b++) {
+        let list = tmp.get(b);
+        if (!list) tmp.set(b, (list = []));
+        list.push(ax, ay, bx, by);
+      }
+    }
+  }
+  const bands = new Map<number, Float64Array>();
+  for (const [b, list] of tmp) bands.set(b, Float64Array.from(list));
+  return { size, bands };
+}
+
+/** Same result as fillPolygon on the source rings, in O(edges near the grid). */
+export function fillBanded(grid: Grid, eb: EdgeBands, out: Float32Array | Uint8Array, value: number, mode: 'max' | 'set' = 'max'): void {
+  const { cell, maxY, height } = grid;
+  const rows: number[][] = Array.from({ length: height }, () => []);
+  const bTop = Math.floor((maxY - 0.5 * cell) / eb.size), bBot = Math.floor((maxY - (height - 0.5) * cell) / eb.size);
+  for (let b = bBot; b <= bTop; b++) {
+    const segs = eb.bands.get(b);
+    if (!segs) continue;
+    // rows whose center lies in this band
+    const yLo = b * eb.size, yHi = (b + 1) * eb.size;
+    const rA = Math.max(0, Math.ceil((maxY - yHi) / cell - 0.5)), rB = Math.min(height - 1, Math.floor((maxY - yLo) / cell - 0.5));
+    for (let k = 0; k < segs.length; k += 4) {
+      const ax = segs[k]!, ay = segs[k + 1]!, bx = segs[k + 2]!, by = segs[k + 3]!;
+      const lo = Math.min(ay, by), hi = Math.max(ay, by);
+      const ra = Math.max(rA, Math.ceil((maxY - hi) / cell - 0.5));
+      const rb = Math.min(rB, Math.floor((maxY - lo) / cell - 0.5));
+      for (let r = ra; r <= rb; r++) {
+        const y = maxY - (r + 0.5) * cell;
+        if (y < lo || y >= hi || y < yLo || y >= yHi) continue;
+        rows[r]!.push(ax + ((y - ay) / (by - ay)) * (bx - ax));
+      }
+    }
+  }
+  fillRows(grid, rows, 0, out, value, mode);
+}
+
+function fillRows(grid: Grid, rows: number[][], r0: number, out: Float32Array | Uint8Array, value: number, mode: 'max' | 'set'): void {
+  const { cell, minX, width } = grid;
   for (let k = 0; k < rows.length; k++) {
     const xs = rows[k]!;
     if (xs.length < 2) continue;

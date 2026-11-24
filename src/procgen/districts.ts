@@ -1,6 +1,6 @@
 import { Delaunay } from 'd3-delaunay';
 import PROCGEN from '../config/procgen.json';
-import { LAND, maskAt, type GeoContext, type Raster } from './context';
+import { LAND, type GeoContext } from './context';
 import type { Rect } from './geom';
 import { SALT, unit, valueNoise } from './rng';
 import type { DistrictType, Site } from './types';
@@ -25,20 +25,29 @@ export function siteRate(density: number): number {
  * fixed candidate set, keyed only on (seed, cx, cy). Any neighbor chunk that
  * asks for these sites gets exactly the same answer.
  */
-export function chunkSites(ctx: GeoContext, cx: number, cy: number, region: Raster): Site[] {
+const siteCache = new WeakMap<GeoContext, Map<string, Site[]>>();
+
+export function chunkSites(ctx: GeoContext, cx: number, cy: number): Site[] {
+  let cache = siteCache.get(ctx);
+  if (!cache) siteCache.set(ctx, (cache = new Map()));
+  const key = `${cx},${cy}`;
+  const hit = cache.get(key);
+  if (hit) return hit;
+  if (cache.size > 4096) cache.delete(cache.keys().next().value!);
   const out: Site[] = [];
   const n = Math.ceil(D.maxSitesPerKm2 * (C / 1000) ** 2);
   const maxRate = D.maxSitesPerKm2;
   for (let i = 0; i < n; i++) {
     const x = (cx + unit(ctx.seed, SALT.site, cx, cy, i, 0)) * C;
     const y = (cy + unit(ctx.seed, SALT.site, cx, cy, i, 1)) * C;
-    if (maskAt(region, x, y) !== LAND) continue;
+    if (ctx.coarseMaskAt(x, y) !== LAND) continue;
     const density = Math.max(ctx.density.sample(x, y), 1 / 255);
     if (unit(ctx.seed, SALT.siteAccept, cx, cy, i) >= siteRate(density) / maxRate) continue;
     const inCity = ctx.inCity(x, y);
     const id = hashId(cx, cy, i);
     out.push({ id, x, y, density, inCity, type: assignType(ctx.seed, id, density, inCity), angle: 0 });
   }
+  cache.set(key, out);
   return out;
 }
 
@@ -65,11 +74,16 @@ export interface DistrictSet {
   cell(i: number): [number, number][] | null;
 }
 
-/** Sites from the (2k+1)² chunk neighborhood + their Voronoi diagram. */
-export function buildDistricts(ctx: GeoContext, cx: number, cy: number, region: Raster): DistrictSet {
-  const k = PROCGEN.raster.neighborhoodChunks;
+/**
+ * Sites from the (2k+1)² chunk neighborhood + their Voronoi diagram. k covers
+ * the longest arterial, so every cell and edge that can reach this chunk is
+ * decided by sites that are all present: neighbors compute identical answers.
+ * Sites are copied (angle is per-chunk scratch state).
+ */
+export function buildDistricts(ctx: GeoContext, cx: number, cy: number): DistrictSet {
+  const k = siteRadiusChunks();
   const sites: Site[] = [];
-  for (let dy = -k; dy <= k; dy++) for (let dx = -k; dx <= k; dx++) sites.push(...chunkSites(ctx, cx + dx, cy + dy, region));
+  for (let dy = -k; dy <= k; dy++) for (let dx = -k; dx <= k; dx++) for (const s of chunkSites(ctx, cx + dx, cy + dy)) sites.push({ ...s });
   const bounds: Rect = [(cx - k) * C, (cy - k) * C, (cx + k + 1) * C, (cy + k + 1) * C];
   const delaunay = Delaunay.from(sites, (s) => s.x, (s) => s.y);
   const voronoi = sites.length >= 2 ? delaunay.voronoi(bounds) : null;
@@ -84,6 +98,11 @@ export function buildDistricts(ctx: GeoContext, cx: number, cy: number, region: 
       return poly ? poly.slice(0, -1) : null;
     },
   };
+}
+
+/** Chunks of sites needed around a chunk: margin + longest arterial. */
+export function siteRadiusChunks(): number {
+  return Math.ceil((PROCGEN.raster.marginMeters + PROCGEN.arterials.maxLengthMeters) / C);
 }
 
 function rectRing(r: Rect): [number, number][] {

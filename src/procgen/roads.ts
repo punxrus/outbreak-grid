@@ -3,7 +3,7 @@ import { LAND, maskAt, type GeoContext, type Raster } from './context';
 import type { DistrictSet } from './districts';
 import { fieldAngle } from './districts';
 import {
-  bboxOf, clipPolylineToRect, densify, pointInRing, polylineLength, rectContains, rectsOverlap, simplifyLine,
+  bboxOf, clipPolylineToRect, densify, pointInRing, polylineLength, rectContains, rectsOverlap,
   type Pt, type Rect,
 } from './geom';
 import { SALT, unit } from './rng';
@@ -22,8 +22,18 @@ export interface ArterialEdge { i: number; j: number; rng: boolean; pieces: Road
  * loops, more often in dense areas. Both are local, so chunks agree.
  * Water crossings become bridges (narrow), ferries (island links), or are dropped.
  */
-export function buildArterials(ctx: GeoContext, ds: DistrictSet, region: Raster): ArterialEdge[] {
+export function buildArterials(ctx: GeoContext, ds: DistrictSet, near: Rect, cells: (Pt[] | null)[]): ArterialEdge[] {
   const { sites, delaunay } = ds;
+  // Bucket grid for witness queries.
+  const B = 1000;
+  const buckets = new Map<string, number[]>();
+  sites.forEach((s, i) => {
+    const key = `${Math.floor(s.x / B)},${Math.floor(s.y / B)}`;
+    const list = buckets.get(key);
+    if (list) list.push(i); else buckets.set(key, [i]);
+  });
+  const relevantSite = cells.map((c) => c !== null && rectsOverlap(bboxOf(c), near));
+
   const pairs: [number, number][] = [];
   if (sites.length === 2) pairs.push([0, 1]);
   const { triangles, halfedges } = delaunay;
@@ -38,44 +48,53 @@ export function buildArterials(ctx: GeoContext, ds: DistrictSet, region: Raster)
     const p = sites[i]!, q = sites[j]!;
     const d = Math.hypot(q.x - p.x, q.y - p.y);
     if (d > A.maxLengthMeters || d < 1) continue;
+    // Only edges that can reach this chunk, or that set a nearby district's street angle.
+    const pad = A.curve * d + A.width;
+    const eb: Rect = [Math.min(p.x, q.x) - pad, Math.min(p.y, q.y) - pad, Math.max(p.x, q.x) + pad, Math.max(p.y, q.y) + pad];
+    if (!rectsOverlap(eb, near) && !relevantSite[i] && !relevantSite[j]) continue;
     let rng = true, gabriel = true;
     const mx = (p.x + q.x) / 2, my = (p.y + q.y) / 2;
-    for (let k = 0; k < sites.length && (rng || gabriel); k++) {
-      if (k === i || k === j) continue;
-      const r = sites[k]!;
-      const dp = Math.hypot(r.x - p.x, r.y - p.y), dq = Math.hypot(r.x - q.x, r.y - q.y);
-      if (dp < d && dq < d) rng = false;
-      if (Math.hypot(r.x - mx, r.y - my) < d / 2) gabriel = false;
+    const R = d * 0.87; // the RNG lune lies within this radius of the midpoint
+    for (let by = Math.floor((my - R) / B); by <= Math.floor((my + R) / B) && (rng || gabriel); by++) {
+      for (let bx = Math.floor((mx - R) / B); bx <= Math.floor((mx + R) / B) && (rng || gabriel); bx++) {
+        for (const k of buckets.get(`${bx},${by}`) ?? []) {
+          if (k === i || k === j) continue;
+          const r = sites[k]!;
+          const dp = Math.hypot(r.x - p.x, r.y - p.y), dq = Math.hypot(r.x - q.x, r.y - q.y);
+          if (dp < d && dq < d) rng = false;
+          if (Math.hypot(r.x - mx, r.y - my) < d / 2) gabriel = false;
+        }
+      }
     }
     const lo = Math.min(p.id, q.id), hi = Math.max(p.id, q.id);
     const loopP = A.loopChanceMin + (A.loopChanceMax - A.loopChanceMin) * ((p.density + q.density) / 2) ** 2;
     if (!rng && !(gabriel && unit(ctx.seed, SALT.edge, lo, hi) < loopP)) continue;
 
     // Gentle curve: quadratic Bezier with a hashed perpendicular offset.
+    // Everything is oriented lower id -> higher id (never by Delaunay index,
+    // which differs between chunks), so both sides bend and sample identically.
+    const [a, b] = p.id <= q.id ? [p, q] : [q, p];
     const off = (unit(ctx.seed, SALT.edgeCurve, lo, hi) - 0.5) * 2 * A.curve * d;
-    const nx = -(q.y - p.y) / d, ny = (q.x - p.x) / d;
+    const nx = -(b.y - a.y) / d, ny = (b.x - a.x) / d;
     const c: Pt = [mx + nx * off, my + ny * off];
     const n = Math.max(2, Math.ceil(d / A.sampleMeters));
     const pts: Pt[] = [];
-    // Orient from lower id to higher id so both chunks sample identically.
-    const [a, b] = p.id <= q.id ? [p, q] : [q, p];
     for (let s = 0; s <= n; s++) {
       const t = s / n, u = 1 - t;
       pts.push([u * u * a.x + 2 * u * t * c[0] + t * t * b.x, u * u * a.y + 2 * u * t * c[1] + t * t * b.y]);
     }
-    const pieces = classifyWater(ctx, pts, region, rng, lo, hi, a, b);
+    const pieces = classifyWater(ctx, pts, rng, lo, hi, a, b);
     if (pieces) out.push({ i, j, rng, pieces });
   }
   return out;
 }
 
 function classifyWater(
-  ctx: GeoContext, pts: Pt[], region: Raster, isRng: boolean, lo: number, hi: number,
+  ctx: GeoContext, pts: Pt[], isRng: boolean, lo: number, hi: number,
   a: { x: number; y: number }, b: { x: number; y: number },
 ): Road[] | null {
-  const step = region.grid.cell;
-  const dense = densify(pts, step);
-  const wet = dense.map((p) => maskAt(region, p[0], p[1]) !== LAND);
+  const dense = densify(pts, PROCGEN.raster.regionCell);
+  const wet = dense.map((p) => ctx.coarseMaskAt(p[0], p[1]) !== LAND);
   const pieces: Road[] = [];
   let start = 0;
   for (let i = 1; i <= dense.length; i++) {
@@ -199,7 +218,9 @@ export function splitByWater(road: { kind: RoadKind; width: number; pts: Pt[] },
     if (i < dense.length && wet[i] === wet[start]) continue;
     const run = dense.slice(Math.max(0, start - 1), Math.min(dense.length, i + 1));
     if (!wet[start]) {
-      out.push({ kind: road.kind, width: road.width, pts: simplifyLine(run, 0.6) });
+      // Not simplified here: chunks see different extents of the same road, and
+      // simplifying before the chunk clip would move the seam crossing.
+      out.push({ kind: road.kind, width: road.width, pts: run });
     } else {
       const len = polylineLength(run);
       const interior = start > 0 && i < dense.length;

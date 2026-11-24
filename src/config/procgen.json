@@ -5,7 +5,7 @@
   "maxCachedChunks": 400,
   "maxVisibleChunks": 80,
   "frameBudgetMs": 14,
-  "raster": { "cell": 2, "marginMeters": 40, "regionCell": 10, "neighborhoodChunks": 2 },
+  "raster": { "cell": 2, "marginMeters": 40, "regionCell": 10 },
   "districts": {
     "minSitesPerKm2": 0.4,
     "maxSitesPerKm2": 18,
@@ -25,7 +25,7 @@
   },
   "arterials": {
     "width": 15,
-    "maxLengthMeters": 6000,
+    "maxLengthMeters": 4000,
     "loopChanceMin": 0.08,
     "loopChanceMax": 0.85,
     "curve": 0.1,
@@ -59,12 +59,14 @@
     "rural": { "targetArea": 25000, "minWidth": 40 }
   },
   "buildings": {
+    "setbackMeters": 1.5,
     "downtown": { "chance": 0.97, "coverage": [0.78, 0.94], "maxSide": 75 },
     "commercial": { "chance": 0.9, "coverage": [0.55, 0.85], "maxSide": 55 },
     "residential": { "chance": 0.88, "coverage": [0.45, 0.65], "maxSide": 16 },
     "suburban": { "chance": 0.82, "coverage": [0.35, 0.55], "maxSide": 20 },
     "rural": { "chance": 0.3, "coverage": [0.06, 0.15], "maxSide": 24 }
   },
+  "landmarkSpacingMeters": { "hospital": 2000, "police": 1500, "helipad": 2000, "armory": 2000, "radio_tower": 2000, "school": 900, "gas_station": 700 },
   "landmarks": {
     "downtown": { "hospital": 0.16, "police": 0.18, "helipad": 0.1, "radio_tower": 0.05, "armory": 0.04 },
     "commercial": { "gas_station": 0.28, "police": 0.1, "hospital": 0.06, "school": 0.08, "armory": 0.03 },

@@ -4,7 +4,7 @@ import { buildingFor, extractBlocks, splitLots } from './blocks';
 import { LAND, ROAD, maskAt, type GeoContext } from './context';
 import { buildDistricts } from './districts';
 import {
-  bboxOf, clipPolylineToRect, clipRingToRect, rectContains, rectsOverlap, ringArea, ringCentroid,
+  bboxOf, clipPolylineToRect, clipRingToRect, rectContains, rectsOverlap, ringArea, ringCentroid, simplifyLine,
   type Pt, type Rect, type Ring,
 } from './geom';
 import { buildArterials, buildCollectors, buildStreets, districtAngle, splitByWater } from './roads';
@@ -24,16 +24,15 @@ export function generateChunk(ctx: GeoContext, cx: number, cy: number): ChunkDat
   const t0 = performance.now();
   const seed = ctx.seed;
   const rect: Rect = [cx * C, cy * C, (cx + 1) * C, (cy + 1) * C];
-  const k = PROCGEN.raster.neighborhoodChunks;
   const M = PROCGEN.raster.marginMeters;
   const outer: Rect = [rect[0] - M, rect[1] - M, rect[2] + M, rect[3] + M];
 
-  // 1. Districts (5x5-chunk neighborhood, coarse 10 m water mask)
-  const region = ctx.rasterize([(cx - k) * C, (cy - k) * C, (cx + k + 1) * C, (cy + k + 1) * C], PROCGEN.raster.regionCell, false);
-  const ds = buildDistricts(ctx, cx, cy, region);
+  // 1. Districts (sites out to the longest arterial; 10 m land tiles)
+  const ds = buildDistricts(ctx, cx, cy);
+  const cells: (Ring | null)[] = ds.sites.map((_, i) => ds.cell(i) as Ring | null);
 
   // 2. Arterials, and street orientation from the longest incident arterial
-  const arterials = buildArterials(ctx, ds, region);
+  const arterials = buildArterials(ctx, ds, outer, cells);
   const longest = new Map<number, { len: number; angle: number }>();
   for (const e of arterials) {
     const a = ds.sites[e.i]!, b = ds.sites[e.j]!;
@@ -62,7 +61,6 @@ export function generateChunk(ctx: GeoContext, cx: number, cy: number): ChunkDat
     }
   }
   for (const pts of buildCollectors(ds, outer)) raw.push({ kind: 'collector', width: PROCGEN.collectors.width, pts });
-  const cells: (Ring | null)[] = ds.sites.map((_, i) => ds.cell(i) as Ring | null);
   ds.sites.forEach((s, i) => {
     const cell = cells[i];
     if (cell) raw.push(...buildStreets(seed, s, cell, outer, landOnly));
@@ -108,16 +106,19 @@ export function generateChunk(ctx: GeoContext, cx: number, cy: number): ChunkDat
   }
 
   // 7. Landmarks: at most one per district, placed by the chunk that owns the site
+  // Spacing: a site keeps its landmark only if no same-type site within the
+  // type's radius rolled lower. Radii stay well inside the site neighborhood,
+  // so every chunk reaches the same verdict.
   const landmarks: Landmark[] = [];
-  const TABLE = PROCGEN.landmarks as Record<string, Record<string, number> | undefined>;
-  for (const s of ds.sites) {
-    if (!rectContains(rect, s.x, s.y)) continue;
-    const table = TABLE[s.type];
-    if (!table) continue;
-    const roll = unit(seed, SALT.landmark, s.id);
-    let acc = 0, pick: LandmarkType | null = null;
-    for (const [type, p] of Object.entries(table)) { acc += p; if (roll < acc) { pick = type as LandmarkType; break; } }
-    if (!pick) continue;
+  const picks = ds.sites.map((s) => pickLandmark(seed, s.type, s.id));
+  const SPACING = PROCGEN.landmarkSpacingMeters as Record<string, number>;
+  ds.sites.forEach((s, si) => {
+    const pick = picks[si]!.type;
+    if (!pick || !rectContains(rect, s.x, s.y)) return;
+    const r2 = (SPACING[pick] ?? 0) ** 2, mine = picks[si]!.roll;
+    const beaten = ds.sites.some((o, oi) => oi !== si && picks[oi]!.type === pick &&
+      (o.x - s.x) ** 2 + (o.y - s.y) ** 2 < r2 && (picks[oi]!.roll < mine || (picks[oi]!.roll === mine && o.id < s.id)));
+    if (beaten) return;
     let best = -1, bestD = 300 * 300;
     lots.forEach((lot, i) => {
       if (Math.abs(ringArea(lot)) < 300) return;
@@ -125,13 +126,13 @@ export function generateChunk(ctx: GeoContext, cx: number, cy: number): ChunkDat
       const d = (x - s.x) ** 2 + (y - s.y) ** 2;
       if (d < bestD) { bestD = d; best = i; }
     });
-    if (best < 0) continue;
+    if (best < 0) return;
     const [lx, ly] = ringCentroid(lots[best]!);
     const size = pick === 'radio_tower' ? { coverage: 0.3, maxSide: 14 } : pick === 'gas_station' ? { coverage: 0.5, maxSide: 26 } : { coverage: 0.85, maxSide: 90 };
     const b = pick === 'helipad' ? null : buildingFor(seed, lots[best]!, lotTypes[best]!, chunkR, size);
     buildings[best] = b ? { ...b, landmark: pick } : null;
     landmarks.push({ id: s.id, type: pick, x: lx, y: ly, districtType: s.type });
-  }
+  });
   for (const r of fixed) {
     if (r.kind !== 'ferry') continue;
     for (const p of [r.pts[0]!, r.pts[r.pts.length - 1]!]) {
@@ -142,7 +143,8 @@ export function generateChunk(ctx: GeoContext, cx: number, cy: number): ChunkDat
 
   // 8. Output, clipped to the chunk rectangle
   const outRoads: Road[] = [];
-  for (const r of roads) for (const pts of clipPolylineToRect(r.pts, rect)) outRoads.push({ ...r, pts });
+  // Clip, then simplify: Douglas-Peucker keeps endpoints, so seam crossings stay exact.
+  for (const r of roads) for (const pts of clipPolylineToRect(r.pts, rect)) outRoads.push({ ...r, pts: simplifyLine(pts, 0.6) });
   const districts: DistrictPatch[] = [];
   ds.sites.forEach((s, i) => {
     const cell = cells[i];
@@ -170,6 +172,18 @@ export function generateChunk(ctx: GeoContext, cx: number, cy: number): ChunkDat
       buildings: finalBuildings.length,
     },
   };
+}
+
+const TABLE = PROCGEN.landmarks as Record<string, Record<string, number> | undefined>;
+
+/** Landmark a district site would host, from (seed, id) alone. */
+export function pickLandmark(seed: number, type: DistrictType, id: number): { type: LandmarkType | null; roll: number } {
+  const table = TABLE[type];
+  const roll = unit(seed, SALT.landmark, id);
+  if (!table) return { type: null, roll };
+  let acc = 0;
+  for (const [t, p] of Object.entries(table)) { acc += p; if (roll < acc) return { type: t as LandmarkType, roll }; }
+  return { type: null, roll };
 }
 
 /** Stable content hash of a chunk (ignores timing), for determinism tests. */
