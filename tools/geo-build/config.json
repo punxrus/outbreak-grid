@@ -1,0 +1,24 @@
+{
+  "tigerYear": 2020,
+  "cacheDir": "%LOCALAPPDATA%/outbreak-grid/geo-cache",
+  "outDir": "public/packs",
+  "simplify": {
+    "tacticalMeters": 6,
+    "strategicMeters": 250
+  },
+  "filters": {
+    "tacticalMinWaterAreaM2": 4000,
+    "strategicMinWaterAreaM2": 3000000,
+    "streamMtfcc": ["H3010", "H3013", "H3020"],
+    "streamsNamedOnly": true,
+    "streamWidthMeters": { "H3010": 8, "H3013": 6, "H3020": 10 }
+  },
+  "density": {
+    "cellMeters": 250,
+    "coarseCellMeters": 1000,
+    "maxPeoplePerKm2": 12000,
+    "blurSigmaCells": 1.2,
+    "logScale": true
+  },
+  "topojsonQuantization": 1000000
+}

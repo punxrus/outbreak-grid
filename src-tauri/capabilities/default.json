@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Main window capabilities (no network, no shell).",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

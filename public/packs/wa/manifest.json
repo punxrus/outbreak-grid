@@ -1,0 +1,116 @@
+{
+  "formatVersion": 1,
+  "state": {
+    "fips": "53",
+    "usps": "WA",
+    "name": "Washington",
+    "population2020": 7705281
+  },
+  "projection": {
+    "proj4": "+proj=tmerc +lat_0=47.4073238 +lon_0=-120.5757999 +k=1 +x_0=0 +y_0=0 +datum=NAD83 +units=m +no_defs",
+    "originLon": -120.5757999,
+    "originLat": 47.4073238,
+    "units": "m"
+  },
+  "boundsMeters": [
+    -317748.3769077199,
+    -205754.7969380647,
+    283511.86942915793,
+    183061.68271417418
+  ],
+  "boundsLonLat": [
+    -124.763068,
+    45.543541,
+    -116.915989,
+    49.002494
+  ],
+  "density": {
+    "encoding": "log1p(people_per_km2)/log1p(max)*255; 0 = water/outside, min 1 on land",
+    "maxPeoplePerKm2": 12000,
+    "rowOrder": "north-to-south",
+    "fine": {
+      "file": "density.bin",
+      "minX": -317750,
+      "minY": -206000,
+      "maxX": 283750,
+      "maxY": 183250,
+      "cell": 250,
+      "width": 2406,
+      "height": 1557
+    },
+    "coarse": {
+      "file": "density_coarse.bin",
+      "minX": -317750,
+      "minY": -206750,
+      "maxX": 284250,
+      "maxY": 183250,
+      "cell": 1000,
+      "width": 602,
+      "height": 390
+    }
+  },
+  "layers": {
+    "tactical": [
+      "land",
+      "water",
+      "streams",
+      "counties",
+      "places"
+    ],
+    "strategic": [
+      "land",
+      "water",
+      "counties",
+      "neighbors"
+    ]
+  },
+  "streamWidthMeters": {
+    "H3010": 8,
+    "H3013": 6,
+    "H3020": 10
+  },
+  "files": {
+    "tactical.topo.json": {
+      "bytes": 14024765,
+      "gzipBytes": 4336612
+    },
+    "strategic.topo.json": {
+      "bytes": 776820,
+      "gzipBytes": 275096
+    },
+    "places.json": {
+      "bytes": 107318,
+      "gzipBytes": 27641
+    },
+    "counties.json": {
+      "bytes": 3784,
+      "gzipBytes": 1220
+    },
+    "density.bin": {
+      "bytes": 3746142,
+      "gzipBytes": 349542
+    },
+    "density_coarse.bin": {
+      "bytes": 234780,
+      "gzipBytes": 45002
+    }
+  },
+  "totalBytes": 18893609,
+  "totalGzipBytes": 5035113,
+  "sources": {
+    "tigerYear": 2020,
+    "urls": {
+      "cbState": "https://www2.census.gov/geo/tiger/GENZ2020/shp/cb_2020_us_state_500k.zip",
+      "cbCounty": "https://www2.census.gov/geo/tiger/GENZ2020/shp/cb_2020_us_county_500k.zip",
+      "tlCounty": "https://www2.census.gov/geo/tiger/TIGER2020/COUNTY/tl_2020_us_county.zip",
+      "tlPlace": "https://www2.census.gov/geo/tiger/TIGER2020/PLACE/tl_2020_53_place.zip",
+      "tlTract": "https://www2.census.gov/geo/tiger/TIGER2020/TRACT/tl_2020_53_tract.zip",
+      "tlArealm": "https://www2.census.gov/geo/tiger/TIGER2020/AREALM/tl_2020_53_arealm.zip",
+      "areawater": "https://www2.census.gov/geo/tiger/TIGER2020/AREAWATER/tl_2020_<county>_areawater.zip",
+      "linearwater": "https://www2.census.gov/geo/tiger/TIGER2020/LINEARWATER/tl_2020_<county>_linearwater.zip",
+      "pl": "https://www2.census.gov/programs-surveys/decennial/2020/data/01-Redistricting_File--PL_94-171/Washington/wa2020.pl.zip"
+    }
+  },
+  "credits": "Boundary, water and population data: U.S. Census Bureau (TIGER/Line, Cartographic Boundary Files, 2020 Census P.L. 94-171). Public domain.",
+  "generatedAt": "2026-11-24T04:37:40.912Z"
+}

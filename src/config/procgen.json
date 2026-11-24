@@ -1,0 +1,75 @@
+{
+  "seed": 1337,
+  "chunkSize": 1000,
+  "minZoom": -2.3,
+  "maxCachedChunks": 400,
+  "maxVisibleChunks": 80,
+  "frameBudgetMs": 14,
+  "raster": { "cell": 2, "marginMeters": 40, "regionCell": 10, "neighborhoodChunks": 2 },
+  "districts": {
+    "minSitesPerKm2": 0.4,
+    "maxSitesPerKm2": 18,
+    "densityExponent": 2.2,
+    "typeJitter": 0.035,
+    "outsideCityPenalty": 0.12,
+    "tiers": [
+      { "type": "downtown", "min": 0.93 },
+      { "type": "commercial", "min": 0.87 },
+      { "type": "residential", "min": 0.74 },
+      { "type": "suburban", "min": 0.57 },
+      { "type": "rural", "min": 0.22 },
+      { "type": "forest", "min": -10 }
+    ],
+    "parkChance": { "commercial": 0.04, "residential": 0.08, "suburban": 0.07 },
+    "angleFieldScaleMeters": 3500
+  },
+  "arterials": {
+    "width": 15,
+    "maxLengthMeters": 6000,
+    "loopChanceMin": 0.08,
+    "loopChanceMax": 0.85,
+    "curve": 0.1,
+    "sampleMeters": 20,
+    "bridgeMaxWaterMeters": 900,
+    "ferryMaxWaterMeters": 9000,
+    "ferryChance": 0.7,
+    "islandMaxAreaKm2": 1000,
+    "chokepointMinMeters": 25
+  },
+  "collectors": { "width": 11, "minType": "suburban" },
+  "smallBridgeMaxMeters": 40,
+  "streetSampleMeters": 8,
+  "minRoadLengthMeters": 35,
+  "streets": {
+    "downtown": { "spacing": [85, 110], "width": 10, "warpAmp": 0, "warpWavelength": 400, "dropChance": 0, "angleJitterDeg": 0, "align": "arterial" },
+    "commercial": { "spacing": [110, 150], "width": 9, "warpAmp": 3, "warpWavelength": 500, "dropChance": 0.04, "angleJitterDeg": 4, "align": "arterial" },
+    "residential": { "spacing": [95, 165], "width": 8, "warpAmp": 9, "warpWavelength": 450, "dropChance": 0.07, "angleJitterDeg": 8, "align": "field" },
+    "suburban": { "spacing": [130, 185], "width": 7, "warpAmp": 34, "warpWavelength": 380, "dropChance": 0.3, "angleJitterDeg": 90, "align": "random" },
+    "rural": { "spacing": [650, 900], "width": 6, "warpAmp": 60, "warpWavelength": 900, "dropChance": 0.55, "angleJitterDeg": 90, "align": "random" }
+  },
+  "culDeSacRadius": 11,
+  "blocks": { "minAreaM2": 150, "simplifyMeters": 2.6, "plazaChance": 0.04 },
+  "lots": {
+    "splitJitter": 0.15,
+    "maxDepth": 11,
+    "downtown": { "targetArea": 1800, "minWidth": 18 },
+    "commercial": { "targetArea": 2600, "minWidth": 22 },
+    "residential": { "targetArea": 650, "minWidth": 14 },
+    "suburban": { "targetArea": 1100, "minWidth": 18 },
+    "rural": { "targetArea": 25000, "minWidth": 40 }
+  },
+  "buildings": {
+    "downtown": { "chance": 0.97, "coverage": [0.78, 0.94], "maxSide": 75 },
+    "commercial": { "chance": 0.9, "coverage": [0.55, 0.85], "maxSide": 55 },
+    "residential": { "chance": 0.88, "coverage": [0.45, 0.65], "maxSide": 16 },
+    "suburban": { "chance": 0.82, "coverage": [0.35, 0.55], "maxSide": 20 },
+    "rural": { "chance": 0.3, "coverage": [0.06, 0.15], "maxSide": 24 }
+  },
+  "landmarks": {
+    "downtown": { "hospital": 0.16, "police": 0.18, "helipad": 0.1, "radio_tower": 0.05, "armory": 0.04 },
+    "commercial": { "gas_station": 0.28, "police": 0.1, "hospital": 0.06, "school": 0.08, "armory": 0.03 },
+    "residential": { "school": 0.2, "gas_station": 0.12, "police": 0.04 },
+    "suburban": { "school": 0.12, "gas_station": 0.1 },
+    "rural": { "gas_station": 0.05, "radio_tower": 0.05, "armory": 0.03 }
+  }
+}
