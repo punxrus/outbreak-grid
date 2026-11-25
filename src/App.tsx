@@ -5,7 +5,9 @@ import { densityToImageData, type DensityGrid } from './geo/density';
 import { RegionPack } from './geo/pack';
 import { ChunkStore } from './procgen/chunkStore';
 import CAMPAIGN from './config/campaign.json';
-import { STAGES, buildRegion, clipCollection, stageById, type Stage } from './campaign/region';
+import { STAGES, buildRegion, clipCollection, stageById } from './campaign/region';
+import { availableStages, enter, isSecured, loadCampaign, newCampaign, saveCampaign, secure, type Holding } from './campaign/state';
+import type { LandmarkType } from './procgen/types';
 import type { Place, TacticalLayers } from './geo/types';
 import { GameMap, type FlyTarget } from './render/GameMap';
 import type { Lod, RegionGeo } from './render/layers';
@@ -57,7 +59,18 @@ function Game({ pack }: { pack: RegionPack }) {
   const lod: Lod = lodMode === 'auto' ? autoLod : lodMode;
 
   // ---- Campaign region: the playable area (a town, a city, then a county) ----
-  const [stage, setStage] = useState<Stage>(() => stageById(new URLSearchParams(window.location.search).get('stage')));
+  // Campaign progress. ?dev=1 unlocks every stage; ?stage= jumps there (dev).
+  const query = useMemo(() => new URLSearchParams(window.location.search), []);
+  const dev = query.get('dev') === '1' || query.has('stage');
+  const [campaign, setCampaign] = useState(() => {
+    const c = loadCampaign();
+    return query.has('stage') ? enter(c, stageById(query.get('stage')).id, true) : c;
+  });
+  useEffect(() => saveCampaign(campaign), [campaign]);
+  const stage = stageById(campaign.current);
+  const open = useMemo(() => availableStages(campaign), [campaign]);
+  const setStage = (id: string) => setCampaign((c) => enter(c, id, dev));
+  const holdings = Object.values(campaign.holdings).sort((a, b) => a.securedAt - b.securedAt);
   // Regions need the fine geometry, so it loads at startup (decode only: the
   // full-state polygons are never triangulated, see clipCollection).
   useEffect(() => {
@@ -125,6 +138,21 @@ function Game({ pack }: { pack: RegionPack }) {
     [procgenOn, visibleKey, showDistricts, showLandmarks, labelZoom, store],
   );
   const gen = store?.progress() ?? { done: 0, total: 0 };
+  const genComplete = !!store?.pregenerated && gen.total > 0 && gen.done === gen.total;
+
+  /** Snapshot the region as a holding: the asset that outlives the visit. */
+  const secureRegion = useCallback(() => {
+    if (!store || !region) return;
+    const sites: Partial<Record<LandmarkType, number>> = {};
+    let buildings = 0;
+    for (const c of store.visible()) {
+      buildings += c.bldg.length;
+      for (const l of c.landmarks) sites[l.type] = (sites[l.type] ?? 0) + 1;
+    }
+    const place = pack.places.filter((p) => p.name === region.stage.name).sort((a, b) => b.pop - a.pop)[0];
+    const h: Holding = { stageId: region.stage.id, label: region.stage.label, securedAt: Date.now(), population: place?.pop ?? 0, buildings, sites };
+    setCampaign((c) => secure(c, h));
+  }, [store, region, pack]);
 
   // Density overlay: coarse grid in strategic, fine grid in tactical.
   const coarseImg = useMemo(() => densityImage(pack.coarseDensity), [pack]);
@@ -203,10 +231,15 @@ function Game({ pack }: { pack: RegionPack }) {
         <div className="brand">OUTBREAK GRID</div>
         <div className="stat">
           <label>REGION</label>
-          <select className="stage" value={stage.id} onChange={(e) => setStage(stageById(e.target.value))} title="Campaign region (dev: all unlocked)">
+          <select className="stage" value={stage.id} onChange={(e) => setStage(e.target.value)} title={dev ? 'Campaign region (dev: all unlocked)' : 'Campaign region'}>
             {[...new Set(STAGES.map((st) => st.leg))].map((leg) => (
               <optgroup key={leg} label={leg}>
-                {STAGES.map((st, i) => (st.leg === leg ? <option key={st.id} value={st.id}>{i + 1}. {st.label}</option> : null))}
+                {STAGES.map((st, i) => {
+                  if (st.leg !== leg) return null;
+                  const locked = !open.has(st.id);
+                  const mark = isSecured(campaign, st.id) ? ' [secured]' : locked ? ' [locked]' : '';
+                  return <option key={st.id} value={st.id} disabled={locked && !dev}>{i + 1}. {st.label}{mark}</option>;
+                })}
               </optgroup>
             ))}
           </select>
@@ -249,7 +282,29 @@ function Game({ pack }: { pack: RegionPack }) {
           Fit state <kbd>S</kbd>
         </button>
         <button onClick={() => setShowCredits((v) => !v)} title="Data credits">Credits</button>
+        <button
+          className={isSecured(campaign, stage.id) ? 'on' : ''}
+          disabled={!genComplete || isSecured(campaign, stage.id)}
+          onClick={secureRegion}
+          title="Dev stand-in for winning the stage: record this region as a holding and open the next stages"
+        >
+          {isSecured(campaign, stage.id) ? 'Secured' : 'Secure region (dev)'}
+        </button>
       </aside>
+
+      {holdings.length > 0 && (
+        <aside className="holdings">
+          <h3>HOLDINGS</h3>
+          {holdings.map((h) => (
+            <div key={h.stageId} className="holding">
+              <div className="name">{h.label}</div>
+              <div className="muted">pop {h.population.toLocaleString()} · {h.buildings.toLocaleString()} bldgs</div>
+              <div className="sites">{Object.entries(h.sites).map(([k, v]) => `${v} ${k.replace('_', ' ')}`).join(' · ') || 'no key sites'}</div>
+            </div>
+          ))}
+          <button className="reset" onClick={() => setCampaign(newCampaign())} title="Start the campaign over (clears holdings)">Reset campaign</button>
+        </aside>
+      )}
 
       <footer className="readout">
         {hoverInfo ? (

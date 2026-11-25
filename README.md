@@ -97,6 +97,18 @@ The game is played one region at a time (`src/config/campaign.json`), along real
 Forks is the tutorial: a small, isolated town with a small outbreak, so the pace
 can build and the systems can be taught before the scale ramps up.
 
+**Branching:** each stage lists the stages it opens (`next`). Securing Olympia
+opens both Tacoma (north) and Centralia (south); the player picks, and the other
+direction stays open (`src/campaign/state.ts`).
+
+**Holdings:** a secured region stays an asset after the player moves on, but
+nothing is rendered or kept in memory for it. When it's secured, the game stores
+a snapshot (population, building count, key sites such as fuel, police,
+hospitals and armories). The economy milestone will turn those counts into
+production. Campaign state lives in browser storage until the save system (M7).
+For testing, **Secure region (dev)** stands in for winning a stage, and
+`?dev=1` unlocks every stage.
+
 A region is the real boundary (city limits or county, from the pack) plus a
 margin, rasterized to a mask (`src/campaign/region.ts`). The mask decides which
 chunks to generate, and the worker uses it to trim content to the region.

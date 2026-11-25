@@ -75,3 +75,14 @@ select.stage {
   border-radius: 3px; padding: 1px 4px; cursor: pointer;
 }
 select.stage option { background: #0d1522; color: var(--text); }
+
+button:disabled { opacity: 0.45; cursor: default; }
+.holdings {
+  position: absolute; left: 12px; top: 60px; width: 260px; max-height: calc(100% - 110px); overflow: auto;
+  padding: 10px 12px; background: var(--panel); border: 1px solid var(--panel-border); border-radius: 3px; z-index: 2;
+}
+.holdings h3 { margin: 0 0 8px; font-size: 12px; letter-spacing: 0.14em; color: var(--accent); }
+.holding { padding: 6px 0; border-top: 1px solid var(--panel-border); font-size: 13px; }
+.holding .name { color: var(--text); font-weight: 700; }
+.holding .sites { color: #ffb347; font-size: 12px; }
+.holdings .reset { margin-top: 8px; width: 100%; font-size: 12px; }

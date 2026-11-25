@@ -1,16 +1,124 @@
 {
+  "start": "forks",
   "stages": [
-    { "id": "forks", "label": "Forks", "leg": "Coast", "kind": "place", "name": "Forks", "marginMeters": 1500 },
-    { "id": "montesano", "label": "Montesano", "leg": "Coast", "kind": "place", "name": "Montesano", "marginMeters": 1500 },
-    { "id": "olympia", "label": "Olympia", "leg": "Coast", "kind": "place", "name": "Olympia", "marginMeters": 800 },
-    { "id": "tacoma", "label": "Tacoma", "leg": "I-5 North", "kind": "place", "name": "Tacoma", "marginMeters": 500 },
-    { "id": "seattle", "label": "Seattle", "leg": "I-5 North", "kind": "place", "name": "Seattle", "marginMeters": 500 },
-    { "id": "everett", "label": "Everett", "leg": "I-5 North", "kind": "place", "name": "Everett", "marginMeters": 500 },
-    { "id": "mount-vernon", "label": "Mount Vernon", "leg": "I-5 North", "kind": "place", "name": "Mount Vernon", "marginMeters": 800 },
-    { "id": "bellingham", "label": "Bellingham", "leg": "I-5 North", "kind": "place", "name": "Bellingham", "marginMeters": 800 },
-    { "id": "centralia", "label": "Centralia", "leg": "I-5 South", "kind": "place", "name": "Centralia", "marginMeters": 1500 },
-    { "id": "longview", "label": "Longview", "leg": "I-5 South", "kind": "place", "name": "Longview", "marginMeters": 800 },
-    { "id": "vancouver", "label": "Vancouver", "leg": "I-5 South", "kind": "place", "name": "Vancouver", "marginMeters": 500 }
+    {
+      "id": "forks",
+      "label": "Forks",
+      "leg": "Coast",
+      "kind": "place",
+      "name": "Forks",
+      "marginMeters": 1500,
+      "next": [
+        "montesano"
+      ]
+    },
+    {
+      "id": "montesano",
+      "label": "Montesano",
+      "leg": "Coast",
+      "kind": "place",
+      "name": "Montesano",
+      "marginMeters": 1500,
+      "next": [
+        "olympia"
+      ]
+    },
+    {
+      "id": "olympia",
+      "label": "Olympia",
+      "leg": "Coast",
+      "kind": "place",
+      "name": "Olympia",
+      "marginMeters": 800,
+      "next": [
+        "tacoma",
+        "centralia"
+      ]
+    },
+    {
+      "id": "tacoma",
+      "label": "Tacoma",
+      "leg": "I-5 North",
+      "kind": "place",
+      "name": "Tacoma",
+      "marginMeters": 500,
+      "next": [
+        "seattle"
+      ]
+    },
+    {
+      "id": "seattle",
+      "label": "Seattle",
+      "leg": "I-5 North",
+      "kind": "place",
+      "name": "Seattle",
+      "marginMeters": 500,
+      "next": [
+        "everett"
+      ]
+    },
+    {
+      "id": "everett",
+      "label": "Everett",
+      "leg": "I-5 North",
+      "kind": "place",
+      "name": "Everett",
+      "marginMeters": 500,
+      "next": [
+        "mount-vernon"
+      ]
+    },
+    {
+      "id": "mount-vernon",
+      "label": "Mount Vernon",
+      "leg": "I-5 North",
+      "kind": "place",
+      "name": "Mount Vernon",
+      "marginMeters": 800,
+      "next": [
+        "bellingham"
+      ]
+    },
+    {
+      "id": "bellingham",
+      "label": "Bellingham",
+      "leg": "I-5 North",
+      "kind": "place",
+      "name": "Bellingham",
+      "marginMeters": 800,
+      "next": []
+    },
+    {
+      "id": "centralia",
+      "label": "Centralia",
+      "leg": "I-5 South",
+      "kind": "place",
+      "name": "Centralia",
+      "marginMeters": 1500,
+      "next": [
+        "longview"
+      ]
+    },
+    {
+      "id": "longview",
+      "label": "Longview",
+      "leg": "I-5 South",
+      "kind": "place",
+      "name": "Longview",
+      "marginMeters": 800,
+      "next": [
+        "vancouver"
+      ]
+    },
+    {
+      "id": "vancouver",
+      "label": "Vancouver",
+      "leg": "I-5 South",
+      "kind": "place",
+      "name": "Vancouver",
+      "marginMeters": 500,
+      "next": []
+    }
   ],
   "pregenMaxChunks": 500,
   "displayMarginMeters": 8000,
