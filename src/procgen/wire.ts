@@ -31,6 +31,10 @@ export interface WireChunk {
   roads: { path: Pt[]; kind: RoadKind; width: number; chokepoint: boolean }[];
   landmarks: { x: number; y: number; type: LandmarkType }[];
   districts: { ring: Ring; type: DistrictType }[];
+  /** 4 m walk grid of the chunk (row 0 = north), for the battle sim. */
+  nav: { cell: number; width: number; height: number; grid: Uint8Array };
+  /** Centers of ordinary buildings inside the region (x,y pairs): where survivors start. */
+  homes: Float32Array;
   stats: ChunkData['stats'];
 }
 
@@ -69,7 +73,7 @@ function packPaths(paths: { path: Pt[]; cls: Wire; shade: number }[]): PathBuffe
 
 /** ArrayBuffers to transfer (not copy) when posting a WireChunk. */
 export function wireTransferables(w: WireChunk): ArrayBuffer[] {
-  return [w.lines, w.bldg].flatMap((l) => [l.startIndices.buffer, l.positions.buffer, l.colors.buffer, l.widths.buffer]) as ArrayBuffer[];
+  return [...[w.lines, w.bldg].flatMap((l) => [l.startIndices.buffer, l.positions.buffer, l.colors.buffer, l.widths.buffer]), w.nav.grid.buffer, w.homes.buffer] as ArrayBuffer[];
 }
 
 const EPS = 1e-6;
@@ -117,8 +121,10 @@ export function chunkWire(c: ChunkData, region?: RegionMask | null): WireChunk {
   add(c.parks, Wire.Park);
   add(c.blocks, Wire.Block);
   const bldg: typeof lines = [];
+  const homes: number[] = [];
   for (const b of c.buildings) {
     if (!keepRing(b.ring)) continue;
+    if (!b.landmark) { const [hx, hy] = ringCentroid(b.ring); homes.push(hx, hy); }
     // buildings are inside lots, never on the border: close the loop
     bldg.push({ path: [...b.ring, b.ring[0]!], cls: b.landmark ? Wire.Landmark : Wire.Building, shade: b.shade });
   }
@@ -142,6 +148,8 @@ export function chunkWire(c: ChunkData, region?: RegionMask | null): WireChunk {
     roads,
     landmarks: c.landmarks.filter((l) => inside(l.x, l.y)).map((l) => ({ x: l.x, y: l.y, type: l.type })),
     districts: c.districts.map((d) => ({ ring: d.ring, type: d.type })),
+    nav: { cell: c.nav.cell, width: c.nav.width, height: c.nav.height, grid: c.nav.grid.slice() },
+    homes: Float32Array.from(homes),
     stats: c.stats,
   };
 }

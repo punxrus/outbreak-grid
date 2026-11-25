@@ -1,0 +1,212 @@
+{
+  "_doc": "Every value here is a first-pass tunable. Speeds in m/s, ranges in m, cooldowns in s. Dots = people per squad.",
+  "units": {
+    "zombie": {
+      "label": "Zombie",
+      "color": "#39ff14",
+      "hp": 3,
+      "speed": 1.5,
+      "sight": 100,
+      "melee": 1.0,
+      "chaseSpeed": 2.4,
+      "smell": 800,
+      "reach": 1.8,
+      "scentSpeedFactor": 1.0
+    },
+    "survivor": {
+      "label": "Survivor",
+      "color": "#ffffff",
+      "hp": 1,
+      "speed": 1.3,
+      "sight": 25
+    },
+    "militia": {
+      "label": "Militia",
+      "color": "#ffb347",
+      "hp": 3,
+      "speed": 1.5,
+      "range": 40,
+      "damage": 1,
+      "cooldown": 1.6,
+      "accuracy": 0.55,
+      "dots": 8,
+      "cost": {
+        "survivors": 8,
+        "ammo": 80
+      },
+      "hunt": 300
+    },
+    "police": {
+      "label": "Police",
+      "color": "#3d8bff",
+      "hp": 4,
+      "speed": 1.6,
+      "range": 50,
+      "damage": 1,
+      "cooldown": 1.2,
+      "accuracy": 0.7,
+      "hunt": 300
+    },
+    "hunter": {
+      "label": "Hunters",
+      "color": "#ff6f00",
+      "hp": 3,
+      "speed": 1.7,
+      "range": 90,
+      "damage": 2,
+      "cooldown": 2.0,
+      "accuracy": 0.8,
+      "dots": 2,
+      "roams": true,
+      "cost": {
+        "survivors": 4,
+        "ammo": 40
+      },
+      "travelSpeed": 4.0
+    },
+    "paratrooper": {
+      "label": "Paratroopers",
+      "color": "#d9c08c",
+      "hp": 6,
+      "speed": 1.8,
+      "range": 70,
+      "damage": 1.5,
+      "cooldown": 0.8,
+      "accuracy": 0.8,
+      "dots": 10,
+      "cost": {
+        "fuel": 15,
+        "ammo": 120
+      },
+      "hunt": 600
+    },
+    "eod": {
+      "label": "EOD",
+      "color": "#fff176",
+      "hp": 4,
+      "speed": 1.6,
+      "range": 60,
+      "damage": 6,
+      "cooldown": 9,
+      "accuracy": 1,
+      "dots": 3,
+      "blast": 12,
+      "charges": 4,
+      "cost": {
+        "fuel": 10,
+        "ammo": 40
+      }
+    },
+    "mortar": {
+      "label": "Mortar team",
+      "color": "#c9a227",
+      "hp": 4,
+      "speed": 0,
+      "range": 650,
+      "minRange": 60,
+      "damage": 3,
+      "cooldown": 6,
+      "accuracy": 1,
+      "dots": 3,
+      "blast": 14,
+      "cost": {
+        "fuel": 8,
+        "ammo": 120
+      }
+    },
+    "artillery": {
+      "label": "Heavy artillery",
+      "color": "#ff4fd8",
+      "hp": 8,
+      "speed": 0,
+      "range": 3000,
+      "minRange": 150,
+      "damage": 5,
+      "cooldown": 10,
+      "accuracy": 1,
+      "dots": 4,
+      "blast": 26,
+      "cost": {
+        "fuel": 25,
+        "ammo": 200
+      }
+    },
+    "drone": {
+      "label": "Drone squad",
+      "color": "#b388ff",
+      "hp": 2,
+      "speed": 12,
+      "range": 30,
+      "damage": 1,
+      "cooldown": 0.5,
+      "accuracy": 0.75,
+      "dots": 4,
+      "flies": true,
+      "leash": 450,
+      "endurance": 240,
+      "cost": {
+        "fuel": 6,
+        "ammo": 60
+      }
+    },
+    "helicopter": {
+      "label": "Attack helicopter",
+      "color": "#ff3b3b",
+      "hp": 20,
+      "speed": 30,
+      "range": 140,
+      "damage": 2,
+      "cooldown": 0.35,
+      "accuracy": 0.85,
+      "dots": 1,
+      "flies": true,
+      "orbit": 160,
+      "blast": 4,
+      "endurance": 150,
+      "cost": {
+        "fuel": 40,
+        "ammo": 250
+      }
+    }
+  },
+  "placeable": [
+    "militia",
+    "hunter",
+    "paratrooper",
+    "eod",
+    "mortar",
+    "artillery",
+    "drone",
+    "helicopter"
+  ],
+  "policeStation": {
+    "every": 45,
+    "batch": 2,
+    "max": 8
+  },
+  "people": {
+    "perSurvivorDot": 8
+  },
+  "outcome": {
+    "securedMinSavedPct": 50,
+    "grades": [
+      {
+        "minPct": 90,
+        "label": "Flawless"
+      },
+      {
+        "minPct": 70,
+        "label": "Decisive"
+      },
+      {
+        "minPct": 50,
+        "label": "Secured"
+      },
+      {
+        "minPct": 0,
+        "label": "Lost"
+      }
+    ]
+  },
+  "tick": 0.1
+}

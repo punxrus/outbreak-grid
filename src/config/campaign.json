@@ -15,7 +15,10 @@
         "hospital"
       ],
       "extraPlaces": [],
-      "zones": []
+      "zones": [],
+      "outbreak": {
+        "zombies": 25
+      }
     },
     {
       "id": "montesano",
@@ -52,7 +55,10 @@
             }
           ]
         }
-      ]
+      ],
+      "outbreak": {
+        "zombies": 60
+      }
     },
     {
       "id": "olympia",
@@ -67,7 +73,10 @@
       ],
       "sites": [],
       "extraPlaces": [],
-      "zones": []
+      "zones": [],
+      "outbreak": {
+        "zombies": 60
+      }
     },
     {
       "id": "tacoma",
@@ -81,7 +90,10 @@
       ],
       "sites": [],
       "extraPlaces": [],
-      "zones": []
+      "zones": [],
+      "outbreak": {
+        "zombies": 60
+      }
     },
     {
       "id": "seattle",
@@ -95,7 +107,10 @@
       ],
       "sites": [],
       "extraPlaces": [],
-      "zones": []
+      "zones": [],
+      "outbreak": {
+        "zombies": 60
+      }
     },
     {
       "id": "everett",
@@ -109,7 +124,10 @@
       ],
       "sites": [],
       "extraPlaces": [],
-      "zones": []
+      "zones": [],
+      "outbreak": {
+        "zombies": 60
+      }
     },
     {
       "id": "mount-vernon",
@@ -123,7 +141,10 @@
       ],
       "sites": [],
       "extraPlaces": [],
-      "zones": []
+      "zones": [],
+      "outbreak": {
+        "zombies": 60
+      }
     },
     {
       "id": "bellingham",
@@ -135,7 +156,10 @@
       "next": [],
       "sites": [],
       "extraPlaces": [],
-      "zones": []
+      "zones": [],
+      "outbreak": {
+        "zombies": 60
+      }
     },
     {
       "id": "centralia",
@@ -149,7 +173,10 @@
       ],
       "sites": [],
       "extraPlaces": [],
-      "zones": []
+      "zones": [],
+      "outbreak": {
+        "zombies": 60
+      }
     },
     {
       "id": "longview",
@@ -163,7 +190,10 @@
       ],
       "sites": [],
       "extraPlaces": [],
-      "zones": []
+      "zones": [],
+      "outbreak": {
+        "zombies": 60
+      }
     },
     {
       "id": "vancouver",
@@ -175,10 +205,20 @@
       "next": [],
       "sites": [],
       "extraPlaces": [],
-      "zones": []
+      "zones": [],
+      "outbreak": {
+        "zombies": 60
+      }
     }
   ],
   "pregenMaxChunks": 500,
   "displayMarginMeters": 8000,
-  "maskMaxCells": 4000000
+  "maskMaxCells": 4000000,
+  "startingResources": {
+    "survivors": 40,
+    "ammo": 700,
+    "fuel": 60,
+    "medical": 20,
+    "food": 100
+  }
 }

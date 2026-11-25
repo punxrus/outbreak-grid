@@ -14,6 +14,9 @@ export interface Holding {
   population: number; // 2020 Census population of the place
   buildings: number;
   sites: Partial<Record<LandmarkType, number>>;
+  /** Share of survivors saved when it was won (0-100); production can scale with it. */
+  savedPct?: number;
+  grade?: string;
 }
 
 export interface CampaignState {

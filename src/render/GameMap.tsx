@@ -19,6 +19,9 @@ interface Props {
   onHover: (coord: [number, number] | null) => void;
   procgen: Layer[];
   region: RegionGeo | null;
+  /** Fast-changing layers (battle dots, placement markers): never trigger a base-layer rebuild. */
+  overlay: Layer[];
+  onMapClick: (coord: [number, number]) => void;
   /** Visible world rectangle in meters, on every view change. */
   onView: (rect: [number, number, number, number]) => void;
 }
@@ -32,11 +35,11 @@ const VIEW = new OrthographicView({ id: 'map', flipY: false, controller: true })
 const interp = new LinearInterpolator(['target', 'zoom']);
 
 /** Flat top-down 2D map: deck.gl standalone with an orthographic (no pitch, no bearing) view in meters. */
-export function GameMap({ pack, tactical, lod, zoom, density, flyTo, onZoom, onHover, procgen, region, onView }: Props) {
+export function GameMap({ pack, tactical, lod, zoom, density, flyTo, onZoom, onHover, procgen, region, overlay, onMapClick, onView }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const deck = useRef<Deck<OrthographicView> | null>(null);
-  const cb = useRef({ onZoom, onHover, onView });
-  cb.current = { onZoom, onHover, onView };
+  const cb = useRef({ onZoom, onHover, onView, onMapClick });
+  cb.current = { onZoom, onHover, onView, onMapClick };
 
   useEffect(() => {
     const el = host.current!;
@@ -47,7 +50,8 @@ export function GameMap({ pack, tactical, lod, zoom, density, flyTo, onZoom, onH
       parent: el,
       views: VIEW,
       initialViewState: initial,
-      controller: { scrollZoom: { speed: 0.01, smooth: true }, dragRotate: false, touchRotate: false, inertia: 250 },
+      // no double-click zoom: it delays single clicks, and squads get placed with quick successive clicks
+      controller: { scrollZoom: { speed: 0.01, smooth: true }, doubleClickZoom: false, dragRotate: false, touchRotate: false, inertia: 250 },
       useDevicePixels: true,
       onViewStateChange: ({ viewState }) => {
         const vs = viewState as OrthographicViewState;
@@ -56,6 +60,7 @@ export function GameMap({ pack, tactical, lod, zoom, density, flyTo, onZoom, onH
         return viewState;
       },
       onHover: (info) => cb.current.onHover(info.coordinate ? [info.coordinate[0]!, info.coordinate[1]!] : null),
+      onClick: (info) => { if (info.coordinate) cb.current.onMapClick([info.coordinate[0]!, info.coordinate[1]!]); },
       getCursor: ({ isDragging }) => (isDragging ? 'grabbing' : 'crosshair'),
     });
     deck.current = d;
@@ -76,8 +81,8 @@ export function GameMap({ pack, tactical, lod, zoom, density, flyTo, onZoom, onH
   );
 
   useEffect(() => {
-    deck.current?.setProps({ layers });
-  }, [layers]);
+    deck.current?.setProps({ layers: [...layers, ...overlay] });
+  }, [layers, overlay]);
 
   useEffect(() => {
     if (!flyTo || !deck.current) return;

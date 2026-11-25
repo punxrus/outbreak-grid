@@ -25,9 +25,18 @@ the repo; everything else is direction for upcoming milestones.
 
 ## Resources and forces
 
-- **Fixed starting resources, split to fight the outbreak.** The player starts
-  with a specific pool and decides where it goes. *(Resource list still open.)*
+- **Core loop: place, then auto-battle.** In the prep phase the player spends
+  the pool by placing squads on the map. Then the battle runs on its own:
+  zombies spread, civilians flee, units fight by their own rules.
+- **Fixed starting resources, split to fight the outbreak:** Survivors, Ammo,
+  Fuel, Medical, Food (`campaign.json` → `startingResources`).
+- **Outcome is the percentage of survivors saved** once the zombies are cleared.
+  Below the minimum (placeholder 50%) the stage is lost even if every zombie
+  dies. Grades: Flawless ≥90%, Decisive ≥70%, Secured ≥50%.
 - **Survivors can be turned into Militia.**
+- **Hunters:** rural locals recruited from survivors who bring their hunting
+  skills. They free-roam the whole map tracking down outlying zombies (no leash),
+  with long rifles but light armor.
 - **Police stations produce police officers.**
 - **Drop-ins:** specific weapon types and military personnel can be dropped
   into areas:
@@ -47,9 +56,15 @@ the repo; everything else is direction for upcoming milestones.
   |---|---|
   | Zombie | bright green `#39ff14` |
   | Survivor | white `#ffffff` |
-  | Police | blue |
-  | Militia | *(proposed: amber)* |
-  | Military (dropped units) | *(proposed: olive / tan)* |
+  | Police | blue `#3d8bff` |
+  | Militia | amber `#ffb347` |
+  | Hunters | blaze orange `#ff6f00` |
+  | Paratroopers | tan `#d9c08c` |
+  | EOD | yellow `#fff176` |
+  | Mortar team | brass `#c9a227` |
+  | Heavy artillery | magenta `#ff4fd8` |
+  | Drone squad | violet `#b388ff` |
+  | Attack helicopter | red `#ff3b3b` |
 
-  Proposed entries need sign-off. Zombie green is already the palette's
-  `zombieGreen`.
+  Every unit type has its own color (`src/config/units.json`). None is close to
+  zombie green or the cyan wireframe.

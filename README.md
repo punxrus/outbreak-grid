@@ -89,6 +89,25 @@ work in the same space.
 
 Design decisions from conversations are collected in [`docs/DESIGN.md`](docs/DESIGN.md).
 
+## Playing a stage: deploy, then auto-battle
+
+1. **Deploy:** spend the starting pool (survivors, ammo, fuel, medical, food) by
+   picking a unit and clicking the map. Ground units need open ground or road.
+2. **Battle:** press Start. The battle (`src/sim/engine.ts`, in a worker) plays
+   itself out. Zombies follow a flow field over the real walk grid toward people,
+   survivors flee toward squads, police stations produce officers, hunters roam
+   the whole map, and riflemen hunt within a leash of where you placed them.
+   Mortars and artillery pick zombie clusters and avoid shelling people.
+   Explosions hurt everyone in the blast.
+3. **Outcome:** scored on the **percentage of survivors saved** when the last
+   zombie falls (or when the 20-minute limit is reached). At least 50% secures
+   the region. Grades: Flawless ≥90%, Decisive ≥70%, Secured ≥50%.
+
+All unit stats, costs and colors live in `src/config/units.json`. To run a
+battle on a real region in Node: `npx tsx tools/procgen-smoke/battle.ts forks`.
+In Forks testing, an undefended town falls at about 17 minutes, while a sensible
+deployment with hunters clears it with about 90% saved.
+
 ## Campaign regions
 
 The game is played one region at a time (`src/config/campaign.json`), along real highways:

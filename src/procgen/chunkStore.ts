@@ -1,6 +1,8 @@
 import CAMPAIGN from '../config/campaign.json';
 import PROCGEN from '../config/procgen.json';
 import type { Region } from '../campaign/region';
+import { assembleWorld } from '../sim/world';
+import type { BattleWorld } from '../sim/types';
 import { chunkKey } from './chunk';
 import type { WireChunk } from './wire';
 import type { WorkerIn, WorkerOut } from './worker';
@@ -133,6 +135,18 @@ export class ChunkStore {
     let done = 0;
     for (const [x, y] of this.wanted) { const k = chunkKey(x, y); if (this.cache.has(k) || this.failed.has(k)) done++; }
     return { done, total: this.wanted.length };
+  }
+
+  /**
+   * The region's walk grid as one raster (4 m cells, row 0 = north), with
+   * everything outside the region marked as water so the battle stays inside.
+   * Only for pre-generated regions, once every chunk is in.
+   */
+  world(region: Region): BattleWorld | null {
+    if (!this.pregen) return null;
+    const chunks = this.regionChunks.map(([x, y]) => this.cache.get(chunkKey(x, y)));
+    if (chunks.some((c) => !c)) return null;
+    return assembleWorld(region, chunks as WireChunk[]);
   }
 
   dispose() {

@@ -12,6 +12,12 @@ import type { Place, TacticalLayers } from './geo/types';
 import { GameMap, type FlyTarget } from './render/GameMap';
 import type { Lod, RegionGeo } from './render/layers';
 import { buildProcLayers } from './render/procLayers';
+import { battleLayers, placementLayers } from './render/battleLayers';
+import UNITS from './config/units.json';
+import { inRegion } from './campaign/region';
+import { useBattle } from './sim/useBattle';
+import type { Placement, UnitKind } from './sim/types';
+import { BattlePanel, affordable, pct, type Resources } from './ui/BattlePanel';
 import { fitBounds } from './render/view';
 import { PlaceSearch } from './ui/PlaceSearch';
 
@@ -145,8 +151,73 @@ function Game({ pack }: { pack: RegionPack }) {
   const gen = store?.progress() ?? { done: 0, total: 0 };
   const genComplete = !!store?.pregenerated && gen.total > 0 && gen.done === gen.total;
 
+  // ---- Deploy, then auto-battle ----
+  const battle = useBattle();
+  const [phase, setPhase] = useState<'prep' | 'battle'>('prep');
+  const [pool, setPool] = useState<Resources>({ ...CAMPAIGN.startingResources });
+  const [placements, setPlacements] = useState<Placement[]>([]);
+  const [armed, setArmed] = useState<UnitKind | null>(null);
+  useEffect(() => { // a new stage starts a fresh deployment
+    battle.stop();
+    setPhase('prep'); setPool({ ...CAMPAIGN.startingResources }); setPlacements([]); setArmed(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stage.id]);
+  const world = useMemo(() => (genComplete && store && region ? store.world(region) : null), [genComplete, store, region]);
+  const unitSpec = (k: string) => (UNITS.units as Record<string, { cost?: Resources; flies?: boolean }>)[k]!;
+
+  const onMapClick = useCallback(([x, y]: [number, number]) => {
+    if (phase !== 'prep' || !armed || !world || !region) return;
+    const spec = unitSpec(armed);
+    if (!affordable(pool, armed) || !inRegion(region.mask, x, y)) return;
+    if (!spec.flies) { // ground units need open ground or road
+      const c = Math.floor((x - world.minX) / world.cell), r = Math.floor((world.maxY - y) / world.cell);
+      const v = world.grid[r * world.width + c];
+      if (v !== 1 && v !== 2) return;
+    }
+    const next = { ...pool };
+    for (const [res, n] of Object.entries(spec.cost ?? {})) next[res] = (next[res] ?? 0) - n;
+    setPool(next);
+    setPlacements((ps) => [...ps, { kind: armed, x, y }]);
+    if (!affordable(next, armed)) setArmed(null);
+  }, [phase, armed, world, region, pool]);
+
+  const undo = () => {
+    const last = placements[placements.length - 1];
+    if (!last) return;
+    const next = { ...pool };
+    for (const [res, n] of Object.entries(unitSpec(last.kind).cost ?? {})) next[res] = (next[res] ?? 0) + n;
+    setPool(next);
+    setPlacements(placements.slice(0, -1));
+  };
+
+  const people = useMemo(() => {
+    const names = [stage.name, ...(stage.extraPlaces as string[])];
+    return names.reduce((a, n) => a + (pack.places.filter((p) => p.name === n).sort((x, y) => y.pop - x.pop)[0]?.pop ?? 0), 0);
+  }, [stage, pack]);
+
+  const startBattle = () => {
+    if (!world) return;
+    setArmed(null);
+    battle.start({
+      seed: (PROCGEN.seed * 31 + [...stage.id].reduce((a, ch) => a * 33 + ch.charCodeAt(0), 7)) >>> 0,
+      world,
+      placements,
+      survivors: Math.round(people / UNITS.people.perSurvivorDot),
+      zombies: (stage as { outbreak?: { zombies: number } }).outbreak?.zombies ?? 40,
+      // each squad brings the ammo it was issued
+      ammo: placements.reduce((a, p) => a + (unitSpec(p.kind).cost?.ammo ?? 0), 0),
+    });
+    setPhase('battle');
+  };
+  const backToPrep = () => { battle.stop(); setPhase('prep'); };
+
+  const overlay = useMemo(
+    () => (phase === 'prep' ? placementLayers(placements) : battleLayers(battle.frame, battle.flashes, performance.now())),
+    [phase, placements, battle.frame, battle.flashes],
+  );
+
   /** Snapshot the region as a holding: the asset that outlives the visit. */
-  const secureRegion = useCallback(() => {
+  const secureRegion = useCallback((outcome?: { savedPct: number; grade: string }) => {
     if (!store || !region) return;
     const sites: Partial<Record<LandmarkType, number>> = {};
     let buildings = 0;
@@ -155,7 +226,7 @@ function Game({ pack }: { pack: RegionPack }) {
       for (const l of c.landmarks) sites[l.type] = (sites[l.type] ?? 0) + 1;
     }
     const place = pack.places.filter((p) => p.name === region.stage.name).sort((a, b) => b.pop - a.pop)[0];
-    const h: Holding = { stageId: region.stage.id, label: region.stage.label, securedAt: Date.now(), population: place?.pop ?? 0, buildings, sites };
+    const h: Holding = { stageId: region.stage.id, label: region.stage.label, securedAt: Date.now(), population: place?.pop ?? 0, buildings, sites, savedPct: outcome?.savedPct, grade: outcome?.grade };
     setCampaign((c) => secure(c, h));
   }, [store, region, pack]);
 
@@ -194,6 +265,7 @@ function Game({ pack }: { pack: RegionPack }) {
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement) return;
       const k = e.key.toLowerCase();
+      if (k === 'escape') { setArmed(null); return; }
       if (k === 'd') setShowDensity((v) => !v);
       else if (k === 'g') setShowDistricts((v) => !v);
       else if (k === 'l') setLodMode((m) => (m === 'auto' ? 'strategic' : m === 'strategic' ? 'tactical' : 'auto'));
@@ -229,6 +301,8 @@ function Game({ pack }: { pack: RegionPack }) {
         onHover={setHover}
         procgen={procLayers}
         region={regionGeo}
+        overlay={overlay}
+        onMapClick={onMapClick}
         onView={setViewRect}
       />
 
@@ -287,14 +361,14 @@ function Game({ pack }: { pack: RegionPack }) {
           Fit state <kbd>S</kbd>
         </button>
         <button onClick={() => setShowCredits((v) => !v)} title="Data credits">Credits</button>
-        <button
+        {dev && <button
           className={isSecured(campaign, stage.id) ? 'on' : ''}
           disabled={!genComplete || isSecured(campaign, stage.id)}
-          onClick={secureRegion}
+          onClick={() => secureRegion()}
           title="Dev stand-in for winning the stage: record this region as a holding and open the next stages"
         >
           {isSecured(campaign, stage.id) ? 'Secured' : 'Secure region (dev)'}
-        </button>
+        </button>}
       </aside>
 
       {holdings.length > 0 && (
@@ -303,7 +377,7 @@ function Game({ pack }: { pack: RegionPack }) {
           {holdings.map((h) => (
             <div key={h.stageId} className="holding">
               <div className="name">{h.label}</div>
-              <div className="muted">pop {h.population.toLocaleString()} · {h.buildings.toLocaleString()} bldgs</div>
+              <div className="muted">pop {h.population.toLocaleString()} · {h.buildings.toLocaleString()} bldgs{h.savedPct !== undefined ? ` · ${Math.round(h.savedPct)}% saved (${h.grade})` : ''}</div>
               <div className="sites">{Object.entries(h.sites).map(([k, v]) => `${v} ${k.replace('_', ' ')}`).join(' · ') || 'no key sites'}</div>
             </div>
           ))}
@@ -329,6 +403,39 @@ function Game({ pack }: { pack: RegionPack }) {
           <div className="ramp" />
           <div className="ticks"><span>rural</span><span>{pack.manifest.density.maxPeoplePerKm2.toLocaleString()}+ /km²</span></div>
           <div className="muted">2020 Census tracts · {lod === 'tactical' ? pack.manifest.density.fine.cell : pack.manifest.density.coarse.cell} m cells</div>
+        </div>
+      )}
+
+      <BattlePanel
+        phase={phase}
+        ready={!!world}
+        pool={pool}
+        placements={placements}
+        armed={armed}
+        stats={battle.stats}
+        speed={battle.speed}
+        onArm={setArmed}
+        onUndo={undo}
+        onStart={startBattle}
+        onSpeed={battle.setSpeed}
+        onAbort={backToPrep}
+      />
+
+      {phase === 'battle' && battle.stats?.outcome && (
+        <div className="modal outcome">
+          <div className="card">
+            <h2 className={battle.stats.outcome.secured ? 'win' : 'loss'}>{battle.stats.outcome.secured ? `${stage.label.toUpperCase()} SECURED` : 'OUTBREAK NOT CONTAINED'}</h2>
+            <div className="big">{pct(battle.stats)}% survivors saved</div>
+            <p>{battle.stats.survivors} of {battle.stats.survivorsStart} survivors · {battle.stats.killed} zombies destroyed · grade <b>{battle.stats.outcome.grade}</b></p>
+            {battle.stats.zombies > 0 && battle.stats.outcome.secured && <p className="muted">Time ran out with {battle.stats.zombies} zombies still out there: scored on survivors saved.</p>}
+            {!battle.stats.outcome.secured && <p className="muted">You need at least {UNITS.outcome.securedMinSavedPct}% of survivors alive when the last zombie falls.</p>}
+            <div className="row" style={{ display: 'flex', gap: 8 }}>
+              {battle.stats.outcome.secured && !isSecured(campaign, stage.id) && (
+                <button onClick={() => { secureRegion(battle.stats!.outcome!); backToPrep(); }}>Claim {stage.label}</button>
+              )}
+              <button onClick={backToPrep}>{battle.stats.outcome.secured ? 'Back to map' : 'Redeploy and try again'}</button>
+            </div>
+          </div>
         </div>
       )}
 
