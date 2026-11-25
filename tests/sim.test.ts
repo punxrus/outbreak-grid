@@ -96,3 +96,16 @@ describe('drone teams', () => {
     expect(b.killed).toBeGreaterThan(3);
   });
 });
+
+describe('unit speeds', () => {
+  it('zombies are faster than every human on the ground', async () => {
+    const UNITS = (await import('../src/config/units.json')).default as { units: Record<string, Record<string, unknown>> };
+    const z = UNITS.units.zombie!;
+    const slowestZombie = Math.min(z.speed as number, z.chaseSpeed as number);
+    for (const [k, u] of Object.entries(UNITS.units)) {
+      if (k === 'zombie' || u.flies) continue;
+      const fastest = Math.max(u.speed as number, (u.travelSpeed as number) ?? 0, ((u.radio as { driveSpeed?: number })?.driveSpeed) ?? 0);
+      expect(fastest, k).toBeLessThan(slowestZombie);
+    }
+  });
+});

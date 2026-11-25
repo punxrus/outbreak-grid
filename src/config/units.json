@@ -5,10 +5,10 @@
       "label": "Zombie",
       "color": "#39ff14",
       "hp": 3,
-      "speed": 1.5,
+      "speed": 2.0,
       "sight": 100,
       "melee": 1.0,
-      "chaseSpeed": 2.4,
+      "chaseSpeed": 3.0,
       "smell": 800,
       "reach": 1.8,
       "scentSpeedFactor": 1.0
@@ -19,7 +19,7 @@
       "hp": 1,
       "speed": 1.3,
       "sight": 25,
-      "travelSpeed": 2.5
+      "travelSpeed": 1.9
     },
     "militia": {
       "label": "Militia",
@@ -50,7 +50,7 @@
       "patrol": 600,
       "radio": {
         "delay": 10,
-        "driveSpeed": 5.0
+        "driveSpeed": 1.9
       }
     },
     "hunter": {
@@ -67,7 +67,7 @@
         "survivors": 4,
         "ammo": 30
       },
-      "travelSpeed": 2.4,
+      "travelSpeed": 1.9,
       "hunt": 1500,
       "ranges": true
     },
@@ -241,5 +241,6 @@
   "resupply": {
     "roundsPerSecond": 2,
     "containHoldSeconds": 60
-  }
+  },
+  "_speedRule": "Zombies (speed and chaseSpeed) are faster than every human on the ground, including travelSpeed and radio driveSpeed. Enforced by tests/sim.test.ts."
 }

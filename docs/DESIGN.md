@@ -61,6 +61,13 @@ the repo; everything else is direction for upcoming milestones.
   - Drone squads (gun drones, plus FPV kamikaze drones with explosives)
   - Attack helicopters
 
+## Speed rule
+
+- **Zombies are faster than every human on the ground** (zombies shamble at
+  2.0 m/s and chase at 3.0; people move at 1.9 m/s at most, including survivors
+  running for the zone, hunters on the move, and police answering a radio call).
+  Nobody outruns the horde. Aircraft are the exception. A test enforces the rule.
+
 ## Look
 
 - **Wireframe city:** outlines only, roads read as gaps between blocks. *Built.*
