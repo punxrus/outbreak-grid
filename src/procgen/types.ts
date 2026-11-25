@@ -6,7 +6,7 @@ export type DistrictType = 'downtown' | 'commercial' | 'residential' | 'suburban
 export type RoadKind = 'arterial' | 'collector' | 'street' | 'rural' | 'bridge' | 'ferry';
 
 export type LandmarkType =
-  | 'hospital' | 'police' | 'gas_station' | 'armory' | 'school' | 'radio_tower' | 'helipad' | 'ferry_terminal';
+  | 'hospital' | 'police' | 'gas_station' | 'armory' | 'school' | 'radio_tower' | 'helipad' | 'ferry_terminal' | 'cooling_tower';
 
 export interface Site {
   id: number;

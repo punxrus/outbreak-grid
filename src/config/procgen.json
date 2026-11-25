@@ -80,6 +80,10 @@
     "rural": { "chance": 0.3, "coverage": [0.06, 0.15], "maxSide": 24 }
   },
   "forcedSiteMinLotM2": 1200,
+  "coolingTowerRadiusMeters": 60,
+  "worldAnchors": [
+    { "id": "satsop-plant", "note": "Satsop nuclear plant site (WNP-3/WNP-5), 46.9598 N 123.4696 W", "x": -220249.6, "y": -45686.4, "type": "industrial" }
+  ],
   "landmarkSpacingMeters": { "hospital": 2000, "police": 1500, "helipad": 2000, "armory": 2000, "radio_tower": 2000, "school": 900, "gas_station": 700 },
   "landmarks": {
     "downtown": { "hospital": 0.16, "police": 0.18, "helipad": 0.1, "radio_tower": 0.05, "armory": 0.04 },

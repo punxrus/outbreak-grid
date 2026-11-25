@@ -12,7 +12,7 @@ const dash = new PathStyleExtension({ dash: true });
 
 const LANDMARK_TEXT: Record<string, string> = {
   hospital: '+ HOSPITAL', police: 'POLICE', gas_station: 'FUEL', armory: 'ARMORY', school: 'SCHOOL',
-  radio_tower: 'RADIO', helipad: 'HELIPAD', ferry_terminal: 'FERRY',
+  radio_tower: 'RADIO', helipad: 'HELIPAD', ferry_terminal: 'FERRY', cooling_tower: 'COOLING TOWER',
 };
 
 type Road = WireChunk['roads'][number];
@@ -20,7 +20,7 @@ type Landmark = WireChunk['landmarks'][number];
 
 /** Which label wins when two overlap (gameplay value first). */
 const PRIORITY: Record<string, number> = {
-  hospital: 0, armory: 1, police: 2, helipad: 3, ferry_terminal: 4, radio_tower: 5, gas_station: 6, school: 7,
+  cooling_tower: -1, hospital: 0, armory: 1, police: 2, helipad: 3, ferry_terminal: 4, radio_tower: 5, gas_station: 6, school: 7,
 };
 
 /**
@@ -145,7 +145,9 @@ export function buildProcLayers(chunks: WireChunk[], opts: { districts: boolean;
     new TextLayer<Landmark>({
       id: 'pg-landmarks',
       data: lms,
-      getPosition: (d) => [d.x, d.y],
+      // structures drawn large (cooling towers) get their label below the ring
+      getPosition: (d) => (d.type === 'cooling_tower' ? [d.x, d.y - 75] : [d.x, d.y]),
+      getAlignmentBaseline: (d) => (d.type === 'cooling_tower' ? 'top' : 'center'),
       getText: (d) => LANDMARK_TEXT[d.type] ?? d.type,
       getColor: hex(W.landmark, 255),
       getSize: L.landmarkSizePx,

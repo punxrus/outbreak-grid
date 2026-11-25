@@ -27,6 +27,7 @@ export interface RegionGeo {
   water: GeoJSON.FeatureCollection;
   streams: GeoJSON.FeatureCollection;
   outline: number[][][]; // outer rings of the boundary
+  zones: { label: string; x: number; y: number; radiusMeters: number }[];
 }
 
 const C = RENDER.colors;
@@ -121,7 +122,38 @@ export function buildLayers({ pack, tactical, lod, zoom, density, procgen, regio
 
   if (showTactical && procgen) layers.push(...procgen);
   if (showTactical && region) {
+    type Z = RegionGeo['zones'][number];
+    const ring = (z: Z) => Array.from({ length: 97 }, (_, k) => [z.x + Math.cos((k / 96) * Math.PI * 2) * z.radiusMeters, z.y + Math.sin((k / 96) * Math.PI * 2) * z.radiusMeters] as [number, number]);
     layers.push(
+      new PathLayer<Z>({
+        id: 'zone-rings',
+        data: region.zones,
+        getPath: ring,
+        getColor: hex(C.zone, 220),
+        getWidth: 2,
+        widthUnits: 'pixels',
+        extensions: [dash],
+        getDashArray: [10, 6],
+        dashJustified: true,
+      } as never),
+      new TextLayer<Z>({
+        id: 'zone-labels',
+        data: region.zones,
+        // above the ring, so it never covers the setpiece inside
+        getPosition: (z) => [z.x, z.y + z.radiusMeters],
+        getText: (z) => z.label.toUpperCase(),
+        getColor: hex(C.zone, 255),
+        getSize: RENDER.labels.zoneSizePx,
+        getPixelOffset: [0, -16],
+        fontFamily: RENDER.labels.font,
+        fontWeight: 700,
+        characterSet: 'auto',
+        background: true,
+        getBackgroundColor: hex(RENDER.labels.plate, 235),
+        getBorderColor: hex(C.zone, 220),
+        getBorderWidth: 1,
+        backgroundPadding: [8, 4, 8, 3],
+      }),
       new PathLayer<number[][]>({
         id: 'region-outline',
         data: region.outline,

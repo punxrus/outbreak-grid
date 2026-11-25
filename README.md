@@ -87,6 +87,8 @@ work in the same space.
    one at a time because www2.census.gov rate-limits parallel requests (HTTP 429).
 6. **Dev port 5180** (5173 is used by another project in this folder).
 
+Design decisions from conversations are collected in [`docs/DESIGN.md`](docs/DESIGN.md).
+
 ## Campaign regions
 
 The game is played one region at a time (`src/config/campaign.json`), along real highways:

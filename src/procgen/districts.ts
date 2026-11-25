@@ -49,6 +49,13 @@ export function chunkSites(ctx: GeoContext, cx: number, cy: number): Site[] {
     const id = hashId(cx, cy, i);
     out.push({ id, x, y, density, inCity, type: assignType(ctx.seed, id, density, inCity, coreness(ctx, x, y), smallTown), angle: 0 });
   }
+  // Real-world anchors (e.g. the Satsop plant): a district of a fixed type,
+  // part of the world on every seed, keyed to the chunk that contains it.
+  (PROCGEN.worldAnchors as { id: string; x: number; y: number; type: string }[]).forEach((a, i) => {
+    if (Math.floor(a.x / C) !== cx || Math.floor(a.y / C) !== cy) return;
+    const at = ctx.densityAt(a.x, a.y);
+    out.push({ id: (1 << 29) | i, x: a.x, y: a.y, density: at.density, inCity: at.place !== null, type: a.type as DistrictType, angle: 0 });
+  });
   // Every town gets a district at its Census center, so it always has a
   // main street / downtown no matter where the random sites fell.
   for (const c of ctx.centers) {

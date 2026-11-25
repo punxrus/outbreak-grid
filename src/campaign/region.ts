@@ -21,9 +21,13 @@ export interface Region {
   /** Chunks that touch the region, nearest to its center first. */
   chunks: [number, number][];
   center: Pt;
-  /** Sites the stage requires, anchored at the place's Census center. */
+  /** Sites the stage requires: stage sites at the place's Census center, zone sites at their zone. */
   forced: ForcedSite[];
+  /** Named parts of the stage (e.g. "The Battle for Satsop"). */
+  zones: Zone[];
 }
+
+export interface Zone { id: string; label: string; x: number; y: number; radiusMeters: number }
 
 export function stageById(id: string | null | undefined): Stage {
   return STAGES.find((s) => s.id === id) ?? STAGES[0]!;
@@ -31,13 +35,19 @@ export function stageById(id: string | null | undefined): Stage {
 
 /** Resolve a stage to its real boundary and build the membership mask + chunk list. */
 export function buildRegion(stage: Stage, t: TacticalLayers, anchor?: Pt): Region | null {
+  const place = (name: string) => t.places.features.filter((f) => f.properties.NAME === name).sort((a, b) => b.properties.pop - a.properties.pop).slice(0, 1);
   const feats = stage.kind === 'county'
     ? t.counties.features.filter((f) => f.properties.NAME === stage.name)
-    : t.places.features.filter((f) => f.properties.NAME === stage.name).sort((a, b) => b.properties.pop - a.properties.pop).slice(0, 1);
+    : place(stage.name);
+  // Neighboring places folded into the stage (Montesano + Satsop)
+  for (const extra of stage.extraPlaces as string[]) feats.push(...place(extra));
   const polygons = feats.flatMap((f) => polygonsOf(f.geometry as never));
   if (!polygons.length) return null;
+  const zones: Zone[] = (stage.zones as Zone[]).map((z) => ({ id: z.id, label: z.label, x: z.x, y: z.y, radiusMeters: z.radiusMeters }));
+  // A zone's disc is part of the region even outside any city limits.
+  const discs = zones.map((z) => [Array.from({ length: 64 }, (_, k) => [z.x + Math.cos((k / 64) * Math.PI * 2) * z.radiusMeters, z.y + Math.sin((k / 64) * Math.PI * 2) * z.radiusMeters])]);
 
-  let b = bboxOf(polygons.flatMap((p) => p[0]!));
+  let b = bboxOf([...polygons, ...discs].flatMap((p) => p[0]!));
   const m = stage.marginMeters;
   b = [b[0] - m, b[1] - m, b[2] + m, b[3] + m];
   // coarsest cell that keeps the mask under the size cap
@@ -45,7 +55,7 @@ export function buildRegion(stage: Stage, t: TacticalLayers, anchor?: Pt): Regio
   while (((b[2] - b[0]) / cell) * ((b[3] - b[1]) / cell) > CAMPAIGN.maskMaxCells) cell *= 2;
   const grid = makeGrid(b, cell);
   const mask = new Uint8Array(grid.width * grid.height);
-  for (const rings of polygons) fillPolygon(grid, rings, mask, 1, 'max');
+  for (const rings of [...polygons, ...discs]) fillPolygon(grid, rings, mask, 1, 'max');
   dilate(mask, grid.width, grid.height, Math.round(m / cell));
 
   const C = PROCGEN.chunkSize;
@@ -60,8 +70,11 @@ export function buildRegion(stage: Stage, t: TacticalLayers, anchor?: Pt): Regio
   const center: Pt = [(b[0] + b[2]) / 2, (b[1] + b[3]) / 2];
   chunks.sort((p, q) => dist2(p, center, C) - dist2(q, center, C));
   const at = anchor ?? center;
-  const forced = (stage.sites as string[]).map((type) => ({ type: type as LandmarkType, x: at[0], y: at[1] }));
-  return { stage, polygons, bbox: [grid.minX, grid.minY, grid.maxX, grid.maxY], mask: { grid, mask }, chunks, center, forced };
+  const forced: ForcedSite[] = (stage.sites as string[]).map((type) => ({ type: type as LandmarkType, x: at[0], y: at[1] }));
+  for (const z of stage.zones as (Zone & { sites: { type: string; dx: number; dy: number }[] })[]) {
+    for (const st of z.sites) forced.push({ type: st.type as LandmarkType, x: z.x + st.dx, y: z.y + st.dy });
+  }
+  return { stage, polygons, bbox: [grid.minX, grid.minY, grid.maxX, grid.maxY], mask: { grid, mask }, chunks, center, forced, zones };
 }
 
 const dist2 = (p: [number, number], c: Pt, C: number) => ((p[0] + 0.5) * C - c[0]) ** 2 + ((p[1] + 0.5) * C - c[1]) ** 2;

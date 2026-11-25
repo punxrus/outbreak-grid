@@ -13,7 +13,9 @@
       ],
       "sites": [
         "hospital"
-      ]
+      ],
+      "extraPlaces": [],
+      "zones": []
     },
     {
       "id": "montesano",
@@ -25,7 +27,32 @@
       "next": [
         "olympia"
       ],
-      "sites": []
+      "sites": [],
+      "extraPlaces": [
+        "Satsop"
+      ],
+      "zones": [
+        {
+          "id": "satsop",
+          "label": "The Battle for Satsop",
+          "note": "Unfinished WNP-3/WNP-5 nuclear plant. Site 46.9598 N, 123.4696 W (Wikipedia); tower spacing approximate.",
+          "x": -220249.6,
+          "y": -45686.4,
+          "radiusMeters": 1800,
+          "sites": [
+            {
+              "type": "cooling_tower",
+              "dx": -240,
+              "dy": 0
+            },
+            {
+              "type": "cooling_tower",
+              "dx": 240,
+              "dy": 0
+            }
+          ]
+        }
+      ]
     },
     {
       "id": "olympia",
@@ -38,7 +65,9 @@
         "tacoma",
         "centralia"
       ],
-      "sites": []
+      "sites": [],
+      "extraPlaces": [],
+      "zones": []
     },
     {
       "id": "tacoma",
@@ -50,7 +79,9 @@
       "next": [
         "seattle"
       ],
-      "sites": []
+      "sites": [],
+      "extraPlaces": [],
+      "zones": []
     },
     {
       "id": "seattle",
@@ -62,7 +93,9 @@
       "next": [
         "everett"
       ],
-      "sites": []
+      "sites": [],
+      "extraPlaces": [],
+      "zones": []
     },
     {
       "id": "everett",
@@ -74,7 +107,9 @@
       "next": [
         "mount-vernon"
       ],
-      "sites": []
+      "sites": [],
+      "extraPlaces": [],
+      "zones": []
     },
     {
       "id": "mount-vernon",
@@ -86,7 +121,9 @@
       "next": [
         "bellingham"
       ],
-      "sites": []
+      "sites": [],
+      "extraPlaces": [],
+      "zones": []
     },
     {
       "id": "bellingham",
@@ -96,7 +133,9 @@
       "name": "Bellingham",
       "marginMeters": 800,
       "next": [],
-      "sites": []
+      "sites": [],
+      "extraPlaces": [],
+      "zones": []
     },
     {
       "id": "centralia",
@@ -108,7 +147,9 @@
       "next": [
         "longview"
       ],
-      "sites": []
+      "sites": [],
+      "extraPlaces": [],
+      "zones": []
     },
     {
       "id": "longview",
@@ -120,7 +161,9 @@
       "next": [
         "vancouver"
       ],
-      "sites": []
+      "sites": [],
+      "extraPlaces": [],
+      "zones": []
     },
     {
       "id": "vancouver",
@@ -130,7 +173,9 @@
       "name": "Vancouver",
       "marginMeters": 500,
       "next": [],
-      "sites": []
+      "sites": [],
+      "extraPlaces": [],
+      "zones": []
     }
   ],
   "pregenMaxChunks": 500,

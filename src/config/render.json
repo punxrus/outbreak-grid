@@ -6,6 +6,7 @@
     "landStrategic": "#1d2229",
     "landOutside": "#15181d",
     "regionLine": "#2fe6ff",
+    "zone": "#ff6b5a",
     "neighborLand": "#121419",
     "neighborBorder": "#3a4250",
     "stream": "#16365a",
@@ -59,6 +60,7 @@
     "countySizePx": 13,
     "placeSizePx": 14,
     "landmarkSizePx": 14,
+    "zoneSizePx": 18,
     "landmarkMinZoom": -1.6,
     "plate": "#0a101a",
     "placeMinPopByZoom": [[-9.5, 80000], [-8.5, 30000], [-7.5, 8000], [-6.5, 2500], [-5.5, 600], [-4, 0]]

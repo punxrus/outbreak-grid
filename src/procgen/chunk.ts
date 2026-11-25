@@ -134,6 +134,7 @@ export function generateChunk(ctx: GeoContext, cx: number, cy: number, forced: F
   // lot near the requested point, chosen by the one chunk containing the point.
   for (const f of forced) {
     if (!rectContains(rect, f.x, f.y)) continue;
+    if (f.type === 'cooling_tower') { placeTower(f); continue; }
     let best = -1, bestScore = Infinity;
     lots.forEach((lot, i) => {
       const area = Math.abs(ringArea(lot));
@@ -143,6 +144,20 @@ export function generateChunk(ctx: GeoContext, cx: number, cy: number, forced: F
       if (score < bestScore) { bestScore = score; best = i; }
     });
     if (best >= 0) placeLandmark(best, f.type, (unit(seed, SALT.landmark, Math.round(f.x), Math.round(f.y), 1) * 1e9) | 0, typeAt(f.x, f.y));
+  }
+  // A setpiece structure at an exact real location, independent of lots:
+  // clears whatever was generated under it. Seen from above, a natural-draft
+  // tower is a ring (base) around a smaller ring (throat).
+  function placeTower(f: ForcedSite) {
+    const R = PROCGEN.coolingTowerRadiusMeters;
+    buildings.forEach((b, i) => {
+      if (!b) return;
+      const [x, y] = ringCentroid(b.ring);
+      if (Math.hypot(x - f.x, y - f.y) < R + 15) buildings[i] = null;
+    });
+    const circle = (r: number): Ring => Array.from({ length: 48 }, (_, k) => [f.x + Math.cos((k / 48) * Math.PI * 2) * r, f.y + Math.sin((k / 48) * Math.PI * 2) * r] as Pt);
+    buildings.push({ ring: circle(R), shade: 1, landmark: 'cooling_tower' }, { ring: circle(R * 0.62), shade: 1, landmark: 'cooling_tower' });
+    landmarks.push({ id: (unit(seed, SALT.landmark, Math.round(f.x), Math.round(f.y), 2) * 1e9) | 0, type: 'cooling_tower', x: f.x, y: f.y, districtType: typeAt(f.x, f.y) });
   }
   for (const r of fixed) {
     if (r.kind !== 'ferry') continue;

@@ -98,6 +98,7 @@ function Game({ pack }: { pack: RegionPack }) {
       water: clipCollection(tactical.water, rect),
       streams: clipCollection(tactical.streams, rect),
       outline: region.polygons.map((p) => p[0]!),
+      zones: region.zones,
     };
   }, [region, tactical]);
 
