@@ -18,6 +18,7 @@ export interface BattleSetup {
   placements: Placement[];
   survivors: number; // dots
   zombies: number; // initial outbreak
+  /** Unissued ammo left in the pool: the safe zone's depot, or shared out if there is no zone. */
   ammo: number;
   /** Player-drawn safe zones: walls (buildings stand in for wall) and gates. */
   zones?: { ring: [number, number][]; gates: [number, number][] }[];
@@ -33,5 +34,7 @@ export interface BattleStats {
   defenders: number;
   ammo: number;
   killed: number;
-  outcome: null | { secured: boolean; savedPct: number; grade: string };
+  /** Unissued ammo still in reserve. */
+  reserve: number;
+  outcome: null | { secured: boolean; savedPct: number; grade: string; contained?: boolean };
 }

@@ -272,8 +272,8 @@ function Game({ pack }: { pack: RegionPack }) {
       zones,
       survivors: Math.round(people / UNITS.people.perSurvivorDot),
       zombies: (stage as { outbreak?: { zombies: number } }).outbreak?.zombies ?? 40,
-      // each squad brings the ammo it was issued
-      ammo: placements.reduce((a, p) => a + (unitSpec(p.kind).cost?.ammo ?? 0), 0),
+      // squads carry what they were issued; what's left in the pool is the reserve
+      ammo: pool.ammo ?? 0,
     });
     setPhase('battle');
   };
@@ -503,7 +503,8 @@ function Game({ pack }: { pack: RegionPack }) {
             <h2 className={battle.stats.outcome.secured ? 'win' : 'loss'}>{battle.stats.outcome.secured ? `${stage.label.toUpperCase()} SECURED` : 'OUTBREAK NOT CONTAINED'}</h2>
             <div className="big">{pct(battle.stats)}% survivors saved</div>
             <p>{battle.stats.survivors} of {battle.stats.survivorsStart} survivors · {battle.stats.killed} zombies destroyed · grade <b>{battle.stats.outcome.grade}</b></p>
-            {battle.stats.zombies > 0 && battle.stats.outcome.secured && <p className="muted">An hour in with {battle.stats.zombies} zombies still out there: scored on survivors saved.</p>}
+            {battle.stats.outcome.contained && <p className="muted">Every survivor is behind your walls: the outbreak is contained.</p>}
+            {battle.stats.zombies > 0 && battle.stats.outcome.secured && !battle.stats.outcome.contained && <p className="muted">An hour in with {battle.stats.zombies} zombies still out there: scored on survivors saved.</p>}
             {!battle.stats.outcome.secured && <p className="muted">You need at least {UNITS.outcome.securedMinSavedPct}% of survivors alive when the last zombie falls.</p>}
             <div className="row" style={{ display: 'flex', gap: 8 }}>
               {battle.stats.outcome.secured && !isSecured(campaign, stage.id) && (

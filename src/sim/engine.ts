@@ -9,7 +9,7 @@ const idx = (k: UnitKind) => KINDS.indexOf(k);
 interface Spec {
   hp: number; speed: number; chaseSpeed?: number; sight?: number; smell?: number; reach?: number; scentSpeedFactor?: number; melee?: number; range?: number; minRange?: number; damage?: number;
   cooldown?: number; accuracy?: number; dots?: number; blast?: number; charges?: number; flies?: boolean;
-  leash?: number; orbit?: number; endurance?: number; hunt?: number; roams?: boolean; travelSpeed?: number; patrol?: number; ownAmmo?: boolean; fpv?: { stock: number; every: number; range: number }; color: string;
+  leash?: number; orbit?: number; endurance?: number; hunt?: number; roams?: boolean; ranges?: boolean; travelSpeed?: number; patrol?: number; ownAmmo?: boolean; radio?: { delay: number; driveSpeed: number }; cost?: Record<string, number>; fpv?: { stock: number; every: number; range: number }; color: string;
 }
 const SPEC: Spec[] = KINDS.map((k) => (UNITS.units as Record<string, Spec>)[k]!);
 const RGB = SPEC.map((s) => [parseInt(s.color.slice(1, 3), 16), parseInt(s.color.slice(3, 5), 16), parseInt(s.color.slice(5, 7), 16)]);
@@ -45,6 +45,10 @@ export class Battle {
   x: Float32Array; y: Float32Array; hp: Float32Array; cool: Float32Array; life: Float32Array;
   ax: Float32Array; ay: Float32Array; hx: Float32Array; hy: Float32Array;
   kind: Uint8Array; alive: Uint8Array; charges: Uint8Array;
+  /** Rounds each person carries: a squad's issued ammo split among its people. */
+  ammoOf: Float32Array;
+  /** Time of the first infection: police hear it on the radio. */
+  firstBite = -1;
   time = 0; ammo: number; killed = 0; survivorsStart = 0;
   /** Explosions this tick (x, y, radius), for the renderer. */
   blasts: number[] = [];
@@ -77,13 +81,14 @@ export class Battle {
     this.w = setup.world;
     this.endless = !!setup.endless;
     this.rand = rng(setup.seed);
-    this.ammo = setup.ammo;
+    this.ammo = setup.ammo; // the reserve
     const dots = setup.placements.reduce((a, p) => a + (SPEC[idx(p.kind)]!.dots ?? 1), 0);
     cap = Math.max(cap, setup.survivors + setup.zombies + dots + setup.world.police.length * UNITS.policeStation.max + 16);
     this.x = new Float32Array(cap); this.y = new Float32Array(cap); this.hp = new Float32Array(cap);
     this.cool = new Float32Array(cap); this.life = new Float32Array(cap);
     this.ax = new Float32Array(cap); this.ay = new Float32Array(cap); this.hx = new Float32Array(cap); this.hy = new Float32Array(cap);
     this.kind = new Uint8Array(cap); this.alive = new Uint8Array(cap); this.charges = new Uint8Array(cap);
+    this.ammoOf = new Float32Array(cap);
     this.hw = Math.ceil((setup.world.width * setup.world.cell) / HASH);
     this.hh = Math.ceil((setup.world.height * setup.world.cell) / HASH);
     this.hashes = [0, 1, 2].map(() => ({ head: new Int32Array(this.hw * this.hh), next: new Int32Array(cap) }));
@@ -159,17 +164,32 @@ export class Battle {
       }
     }
     for (const pl of setup.placements) this.placeSquad(pl);
+    // Without a safe zone there is no depot: share the reserve out among the squads now.
+    if (!this.zoneMask && this.ammo > 0) {
+      const shooters: number[] = [];
+      for (let i = 0; i < this.n; i++) if (this.kind[i] !== Z && this.kind[i] !== S && SPEC[this.kind[i]!]!.cost?.ammo) shooters.push(i);
+      // capped at 1.5x each person's normal issue, so a reserve can't turn two hunters into an army
+      if (shooters.length) {
+        const each = this.ammo / shooters.length;
+        for (const i of shooters) {
+          const sp = SPEC[this.kind[i]!]!, cap = (sp.cost!.ammo! / (sp.dots ?? 1)) * 1.5;
+          const add = Math.max(0, Math.min(each, cap - this.ammoOf[i]!));
+          this.ammoOf[i]! += add; this.ammo -= add;
+        }
+      }
+    }
   }
 
   /** Squads: `dots` people in a tight cluster around the placement point. */
   placeSquad(pl: Placement) {
     const k = idx(pl.kind), sp = SPEC[k]!;
     if (sp.fpv) this.launchers.push({ x: pl.x, y: pl.y, left: sp.fpv.stock, next: 3 + this.launchers.length });
-    for (let d = 0; d < (sp.dots ?? 1); d++) {
-      const a = (d / (sp.dots ?? 1)) * Math.PI * 2, r = d === 0 ? 0 : 4;
+    const dots = sp.dots ?? 1, each = (sp.cost?.ammo ?? 0) / dots;
+    for (let d = 0; d < dots; d++) {
+      const a = (d / dots) * Math.PI * 2, r = d === 0 ? 0 : 4;
       const tx = pl.x + Math.cos(a) * r, ty = pl.y + Math.sin(a) * r;
       const p = sp.flies ? [tx, ty] : this.walkableNear(tx, ty);
-      if (p) this.spawn(k, p[0]!, p[1]!, pl.x, pl.y);
+      if (p) { const j = this.spawn(k, p[0]!, p[1]!, pl.x, pl.y); if (j >= 0) this.ammoOf[j] = each; }
     }
   }
 
@@ -181,6 +201,7 @@ export class Battle {
     this.x = f32(this.x); this.y = f32(this.y); this.hp = f32(this.hp); this.cool = f32(this.cool); this.life = f32(this.life);
     this.ax = f32(this.ax); this.ay = f32(this.ay); this.hx = f32(this.hx); this.hy = f32(this.hy);
     this.kind = u8(this.kind); this.alive = u8(this.alive); this.charges = u8(this.charges);
+    this.ammoOf = f32(this.ammoOf);
     for (const h of this.hashes) { const nx = new Int32Array(cap); nx.set(h.next); h.next = nx; }
   }
 
@@ -190,7 +211,7 @@ export class Battle {
     this.x[i] = x; this.y[i] = y; this.ax[i] = ax; this.ay[i] = ay;
     this.hx[i] = this.rand() * 2 - 1; this.hy[i] = this.rand() * 2 - 1;
     this.kind[i] = k; this.alive[i] = 1; this.hp[i] = sp.hp; this.cool[i] = this.rand() * (sp.cooldown ?? 1);
-    this.life[i] = sp.endurance ?? Infinity; this.charges[i] = sp.charges ?? 0;
+    this.life[i] = sp.endurance ?? Infinity; this.charges[i] = sp.charges ?? 0; this.ammoOf[i] = 0;
     return i;
   }
 
@@ -233,6 +254,7 @@ export class Battle {
     if (this.wallHp[c]! <= 0) { this.wallHp[c] = 0; this.hpass[c] = 1; this.breaches++; }
   }
   breaches = 0;
+  private containedSince = -1;
   /** True if an intact wall (or gate) stands between two nearby points: no biting through it. */
   private wallBetween(x1: number, y1: number, x2: number, y2: number): boolean {
     if (!this.wallList.length) return false;
@@ -377,8 +399,13 @@ export class Battle {
     return [dx / l, dy / l];
   }
 
+  /** Units that track zombies beyond the short hunt leash: hunters, police on a radio call. */
   private hasRoamers(): boolean {
-    for (let i = 0; i < this.n; i++) if (this.alive[i] && SPEC[this.kind[i]!]!.roams) return true;
+    for (let i = 0; i < this.n; i++) {
+      if (!this.alive[i]) continue;
+      const sp = SPEC[this.kind[i]!]!;
+      if (sp.roams || sp.ranges || (sp.radio && this.firstBite >= 0)) return true;
+    }
     return false;
   }
 
@@ -429,9 +456,9 @@ export class Battle {
     return -1;
   }
   private shoot(i: number, j: number, sp: Spec): boolean {
-    // police carry their own (municipal) ammo; everyone else draws on the squads' supply
-    if (this.cool[i]! > 0 || (!sp.ownAmmo && this.ammo <= 0)) return false;
-    if (!sp.ownAmmo) this.ammo--;
+    // everyone fires what they carry: squads what they were issued, officers their own rounds
+    if (this.cool[i]! > 0 || (!sp.ownAmmo && this.ammoOf[i]! < 1)) return false;
+    if (!sp.ownAmmo) this.ammoOf[i]!--;
     this.cool[i] = sp.cooldown!;
     this.shots.push(this.x[i]!, this.y[i]!, this.x[j]! + (this.rand() - 0.5) * 2, this.y[j]! + (this.rand() - 0.5) * 2, this.kind[i]!);
     if (this.rand() < sp.accuracy!) {
@@ -463,6 +490,7 @@ export class Battle {
         if (t >= 0) {
           const d = Math.hypot(this.x[t]! - this.x[i]!, this.y[t]! - this.y[i]!);
           if (d < sp.reach! && !this.wallBetween(this.x[i]!, this.y[i]!, this.x[t]!, this.y[t]!)) {
+            if (this.firstBite < 0) this.firstBite = this.time;
             if (this.kind[t] === S) { this.kind[t] = Z; this.hp[t] = SPEC[Z]!.hp; } // bitten: turns
             else {
               this.hp[t]! -= sp.melee! * DT;
@@ -532,11 +560,23 @@ export class Battle {
         if (this.life[i]! <= 0) { this.alive[i] = 0; continue; } // out of fuel / battery: returns to base
       }
       const kindName = KINDS[k]!;
+      // The safe zone is the depot: restock inside it; run dry outside and head back.
+      if (this.zoneMask && sp.cost?.ammo && !sp.flies) {
+        const inZone = this.zoneMask[this.cellIndex(this.x[i]!, this.y[i]!)] === 1;
+        const full = (sp.cost.ammo / (sp.dots ?? 1)) * 1.5;
+        if (inZone && this.ammo > 0 && this.ammoOf[i]! < full) {
+          const take = Math.min(this.ammo, UNITS.resupply.roundsPerSecond * DT, full - this.ammoOf[i]!);
+          this.ammoOf[i]! += take; this.ammo -= take;
+        } else if (!inZone && this.ammoOf[i]! < 1 && this.ammo >= 1 && this.sdist && sp.speed > 0) {
+          const home = this.downhill(this.x[i]!, this.y[i]!, this.sdist, this.hpass);
+          if (home) { this.move(i, home[0] * sp.speed * DT, home[1] * sp.speed * DT); continue; }
+        }
+      }
       if (kindName === 'mortar' || kindName === 'artillery') {
-        if (this.cool[i]! <= 0 && this.ammo >= 2) {
+        if (this.cool[i]! <= 0 && this.ammoOf[i]! >= 2) {
           const t = this.pickCluster(i, sp.minRange!, sp.range!, sp.blast!);
           if (t) {
-            this.ammo -= 2;
+            this.ammoOf[i]! -= 2;
             this.cool[i] = sp.cooldown!;
             const scatter = sp.blast! * (kindName === 'artillery' ? 0.6 : 0.35);
             const ix = t[0] + (this.rand() - 0.5) * scatter, iy = t[1] + (this.rand() - 0.5) * scatter;
@@ -579,17 +619,21 @@ export class Battle {
       // riflemen: militia, police, hunters, paratroopers
       const t = this.nearest(this.x[i]!, this.y[i]!, sp.range!, isZombie);
       if (t >= 0) {
-        if (!this.shoot(i, t, sp) && this.ammo <= 0) {
+        if (!this.shoot(i, t, sp) && !sp.ownAmmo && this.ammoOf[i]! < 1) {
           const d = Math.hypot(this.x[t]! - this.x[i]!, this.y[t]! - this.y[i]!);
           if (d < 1.6) this.hurtZombie(t, 0.6 * DT); // out of ammo: fighting hand to hand
         }
       } else if (sp.patrol) {
-        // Police: chase zombies they find nearby, otherwise patrol around the station.
+        // Police: once the outbreak is on the radio, drive to it; before that,
+        // patrol around the station and chase anything nearby.
         const zd = this.fieldDist(this.x[i]!, this.y[i]!, this.zdist) * FCELL;
         const fromHome = Math.hypot(this.x[i]! - this.ax[i]!, this.y[i]! - this.ay[i]!);
-        const dir = zd <= (sp.hunt ?? 0) ? this.downhill(this.x[i]!, this.y[i]!, this.zdist) : null;
-        if (dir && fromHome < sp.patrol) this.move(i, dir[0] * sp.speed * DT, dir[1] * sp.speed * DT);
-        else {
+        const called = sp.radio && this.firstBite >= 0 && this.time >= this.firstBite + sp.radio.delay;
+        const dir = (called && zd < FAR * FCELL) || zd <= (sp.hunt ?? 0) ? this.downhill(this.x[i]!, this.y[i]!, this.zdist) : null;
+        if (dir && (called || fromHome < sp.patrol)) {
+          const v = (called && zd > 150 ? sp.radio!.driveSpeed : sp.speed) * DT;
+          this.move(i, dir[0] * v, dir[1] * v);
+        } else {
           if (fromHome > sp.patrol * 0.8) { // turn back toward the station
             const l = fromHome || 1;
             this.hx[i] = (this.ax[i]! - this.x[i]!) / l; this.hy[i] = (this.ay[i]! - this.y[i]!) / l;
@@ -597,10 +641,14 @@ export class Battle {
           const l = Math.hypot(this.hx[i]!, this.hy[i]!) || 1;
           this.move(i, (this.hx[i]! / l) * sp.speed * 0.7 * DT, (this.hy[i]! / l) * sp.speed * 0.7 * DT);
         }
-      } else if (sp.roams) {
-        // Hunters: no leash. Track the nearest zombie anywhere along the field;
-        // with nothing left to track, range out across the map.
-        const dir = this.downhill(this.x[i]!, this.y[i]!, this.zdist);
+      } else if (sp.roams || sp.ranges) {
+        // Hunters: track zombies along the field within a long leash of where
+        // they were placed; with nothing to track, range around their ground.
+        const fromHome = Math.hypot(this.x[i]! - this.ax[i]!, this.y[i]! - this.ay[i]!);
+        const zdM = this.fieldDist(this.x[i]!, this.y[i]!, this.zdist) * FCELL;
+        const inReach = sp.roams || (zdM <= (sp.hunt ?? 0) && fromHome < (sp.hunt ?? 0));
+        const dir = inReach ? this.downhill(this.x[i]!, this.y[i]!, this.zdist) : null;
+        if (!dir && !sp.roams && fromHome > (sp.hunt ?? 0) * 0.8) { const l = fromHome || 1; this.hx[i] = (this.ax[i]! - this.x[i]!) / l; this.hy[i] = (this.ay[i]! - this.y[i]!) / l; }
         // drive (trucks, ATVs) while the quarry is far, stalk on foot for the shot
         const far = this.fieldDist(this.x[i]!, this.y[i]!, this.zdist) * FCELL > 150;
         const v = (far ? sp.travelSpeed ?? sp.speed : sp.speed) * DT;
@@ -643,7 +691,8 @@ export class Battle {
       this.w.police.forEach(([px, py], s) => {
         for (let b = 0; b < UNITS.policeStation.batch && this.stationSpawned[s]! < UNITS.policeStation.max; b++) {
           const p = this.walkableNear(px + (this.rand() - 0.5) * 10, py + (this.rand() - 0.5) * 10);
-          if (p && this.spawn(idx('police'), p[0], p[1]) >= 0) this.stationSpawned[s]!++;
+          const j = p ? this.spawn(idx('police'), p[0], p[1]) : -1;
+          if (j >= 0) { this.ammoOf[j] = UNITS.policeStation.ammoEach; this.stationSpawned[s]!++; } // officers bring their own rounds
         }
       });
     }
@@ -658,7 +707,7 @@ export class Battle {
   }
   private compact() {
     let w = 0;
-    const arrs = [this.x, this.y, this.hp, this.cool, this.life, this.ax, this.ay, this.hx, this.hy, this.kind, this.alive, this.charges];
+    const arrs = [this.x, this.y, this.hp, this.cool, this.life, this.ax, this.ay, this.hx, this.hy, this.kind, this.alive, this.charges, this.ammoOf];
     for (let i = 0; i < this.n; i++) {
       if (!this.alive[i]) continue;
       if (w !== i) for (const a of arrs) a[w] = a[i]!;
@@ -675,6 +724,20 @@ export class Battle {
     const grade = UNITS.outcome.grades.find((g) => pct >= g.minPct)!.label;
     if (pct < min) return { secured: false, savedPct: pct, grade: 'Lost' };
     if (zombies === 0) return { secured: true, savedPct: pct, grade };
+    // Contained: every living survivor inside an unbreached zone with no zombies in it, for a while.
+    if (this.zoneMask && alive > 0 && this.breaches === 0) {
+      let out = 0, zin = 0;
+      for (let i = 0; i < this.n; i++) {
+        if (!this.alive[i]) continue;
+        const inside = this.zoneMask[this.cellIndex(this.x[i]!, this.y[i]!)] === 1;
+        if (this.kind[i] === S && !inside) out++;
+        if (this.kind[i] === Z && inside) zin++;
+      }
+      if (out === 0 && zin === 0) {
+        if (this.containedSince < 0) this.containedSince = this.time;
+        if (this.time - this.containedSince >= UNITS.resupply.containHoldSeconds) return { secured: true, savedPct: pct, grade, contained: true };
+      } else this.containedSince = -1;
+    }
     // With no forces left the battle still plays out: the score is survivors
     // saved, so it ends when they fall below the minimum or time runs out.
     // Out of time: judged on survivors saved, like every other outcome.
@@ -687,7 +750,7 @@ export class Battle {
     for (let i = 0; i < this.n; i++) if (this.alive[i] && this.kind[i] !== Z && this.kind[i] !== S) guards++;
     return {
       time: this.time, zombies: this.count(Z), survivors: this.count(S), survivorsStart: this.survivorsStart,
-      defenders: guards, ammo: this.ammo, killed: this.killed, outcome: this.outcome,
+      defenders: guards, ammo: Math.round(this.carriedAmmo()), reserve: Math.round(this.ammo), killed: this.killed, outcome: this.outcome,
     };
   }
 
@@ -702,6 +765,12 @@ export class Battle {
       out[4 * k + 3] = this.gate[c]!;
     });
     return out;
+  }
+
+  private carriedAmmo(): number {
+    let a = 0;
+    for (let i = 0; i < this.n; i++) if (this.alive[i]) a += this.ammoOf[i]!;
+    return a;
   }
 
   /** Live agents as flat arrays for the renderer. */

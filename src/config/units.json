@@ -35,7 +35,7 @@
         "survivors": 8,
         "ammo": 80
       },
-      "hunt": 300
+      "hunt": 600
     },
     "police": {
       "label": "Police",
@@ -45,10 +45,13 @@
       "range": 50,
       "damage": 1,
       "cooldown": 1.2,
-      "accuracy": 0.7,
+      "accuracy": 0.55,
       "hunt": 300,
       "patrol": 600,
-      "ownAmmo": true
+      "radio": {
+        "delay": 10,
+        "driveSpeed": 5.0
+      }
     },
     "hunter": {
       "label": "Hunters",
@@ -58,14 +61,15 @@
       "range": 90,
       "damage": 2,
       "cooldown": 2.0,
-      "accuracy": 0.8,
+      "accuracy": 0.65,
       "dots": 2,
-      "roams": true,
       "cost": {
         "survivors": 4,
-        "ammo": 40
+        "ammo": 30
       },
-      "travelSpeed": 4.0
+      "travelSpeed": 2.4,
+      "hunt": 1500,
+      "ranges": true
     },
     "paratrooper": {
       "label": "Paratroopers",
@@ -199,7 +203,8 @@
   "policeStation": {
     "every": 30,
     "batch": 1,
-    "max": 8
+    "max": 4,
+    "ammoEach": 30
   },
   "people": {
     "perSurvivorDot": 8
@@ -232,5 +237,9 @@
     "gateWidthMeters": 8,
     "hp": 250,
     "zombieDamagePerSecond": 1.0
+  },
+  "resupply": {
+    "roundsPerSecond": 2,
+    "containHoldSeconds": 60
   }
 }

@@ -35,10 +35,20 @@ the repo; everything else is direction for upcoming milestones.
   dies. Grades: Flawless ≥90%, Decisive ≥70%, Secured ≥50%.
 - **Survivors can be turned into Militia.**
 - **Hunters:** rural locals recruited from survivors who bring their hunting
-  skills. They free-roam the whole map tracking down outlying zombies (no leash),
-  with long rifles but light armor.
-- **Police stations produce one officer every 30 s** (up to 8). Officers patrol
-  around their station and chase down zombies they find.
+  skills. They track outlying zombies within about 1.5 km of where they are
+  placed, carry limited ammo (15 rounds each), and have light armor.
+- **Police stations produce one officer every 30 s** (up to 4 for a small-town
+  station, 30 rounds each). Officers patrol around their station. Once the
+  outbreak comes over the radio (about 10 s after the first infection), they
+  drive toward it and fight it.
+- **Militia engage early:** within 600 m of their post.
+- **Ammo is split, not pooled:** each squad carries what it was issued. Unissued
+  ammo is the reserve. With a safe zone, the zone is the depot: units restock
+  inside it, and units that run dry go back for more. Without a zone, the reserve
+  is shared out at the start, capped at 1.5x each unit's issue.
+- **Containment win:** once every living survivor has been inside an unbreached
+  zone with no zombies for 60 s, the outbreak is contained and the battle ends,
+  scored on survivors saved.
 - **Starting roster (Forks):** limited militia (4 squads) and at most 2 hunter
   squads. Paratroopers, EOD, mortars, artillery, drones and helicopters are not
   available at the start; they unlock later in the campaign.

@@ -86,7 +86,7 @@ export function BattlePanel(p: Props) {
             <div className="live">
               <div><i style={{ background: SPEC.zombie!.color }} />Zombies <b>{p.stats.zombies}</b></div>
               <div><i style={{ background: SPEC.survivor!.color }} />Survivors <b>{p.stats.survivors}</b> <span className="muted">/ {p.stats.survivorsStart} ({pct(p.stats)}%)</span></div>
-              <div>Forces <b>{p.stats.defenders}</b> · Ammo <b>{p.stats.ammo}</b> · Kills <b>{p.stats.killed}</b></div>
+              <div>Forces <b>{p.stats.defenders}</b> · Ammo carried <b>{p.stats.ammo}</b> · reserve <b>{p.stats.reserve}</b> · Kills <b>{p.stats.killed}</b></div>
               <div className="muted">{fmtTime(p.stats.time)}</div>
             </div>
           )}
