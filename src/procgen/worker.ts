@@ -4,11 +4,12 @@ import { RegionPack } from '../geo/pack';
 import { generateChunk } from './chunk';
 import { GeoContext } from './context';
 import type { RegionMask } from '../campaign/region';
+import type { ForcedSite } from './types';
 import { chunkWire, wireTransferables } from './wire';
 
 export type WorkerIn =
   | { type: 'init'; state: string; seed: number }
-  | { type: 'region'; mask: RegionMask | null; rv: number }
+  | { type: 'region'; mask: RegionMask | null; forced: ForcedSite[]; rv: number }
   | { type: 'gen'; cx: number; cy: number; rv: number };
 export type WorkerOut =
   | { type: 'ready'; ms: number }
@@ -17,6 +18,7 @@ export type WorkerOut =
 
 let ctx: GeoContext | null = null;
 let region: RegionMask | null = null;
+let forced: ForcedSite[] = [];
 const queue: WorkerIn[] = [];
 const post = (m: WorkerOut, transfer: Transferable[] = []) => (self as unknown as DedicatedWorkerGlobalScope).postMessage(m, transfer);
 
@@ -35,7 +37,7 @@ self.onmessage = async (e: MessageEvent<WorkerIn>) => {
     }
     return;
   }
-  if (msg.type === 'region') { region = msg.mask; return; } // ordered before later 'gen' messages
+  if (msg.type === 'region') { region = msg.mask; forced = msg.forced; return; } // ordered before later 'gen' messages
   if (!ctx) queue.push(msg);
   else run(msg);
 };
@@ -43,7 +45,7 @@ self.onmessage = async (e: MessageEvent<WorkerIn>) => {
 function run(msg: WorkerIn) {
   if (msg.type !== 'gen' || !ctx) return;
   try {
-    const c = generateChunk(ctx, msg.cx, msg.cy);
+    const c = generateChunk(ctx, msg.cx, msg.cy, forced);
     const wire = chunkWire(c, region);
     post({ type: 'chunk', cx: msg.cx, cy: msg.cy, rv: msg.rv, wire }, wireTransferables(wire));
   } catch (err) {

@@ -65,3 +65,6 @@ export interface ChunkData {
   nav: ChunkNav;
   stats: { ms: number; sites: number; roads: number; blocks: number; lots: number; buildings: number; navNodes: number; navEdges: number };
 }
+
+/** A site a campaign stage requires, placed on the best lot near (x, y). */
+export interface ForcedSite { type: LandmarkType; x: number; y: number }

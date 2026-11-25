@@ -10,7 +10,7 @@ import {
 } from './geom';
 import { buildArterials, buildCollectors, buildStreets, districtAngle, splitByWater } from './roads';
 import { SALT, unit } from './rng';
-import type { Building, ChunkData, DistrictPatch, DistrictType, Landmark, LandmarkType, Road, RoadKind } from './types';
+import type { Building, ChunkData, DistrictPatch, DistrictType, ForcedSite, Landmark, LandmarkType, Road, RoadKind } from './types';
 
 const C = PROCGEN.chunkSize;
 
@@ -21,7 +21,7 @@ export const chunkKey = (cx: number, cy: number) => `${cx},${cy}`;
  * → local streets → blocks → lots → buildings → landmarks. Pure function of
  * (ctx.seed, real geography, cx, cy).
  */
-export function generateChunk(ctx: GeoContext, cx: number, cy: number): ChunkData {
+export function generateChunk(ctx: GeoContext, cx: number, cy: number, forced: ForcedSite[] = []): ChunkData {
   const t0 = performance.now();
   const seed = ctx.seed;
   const rect: Rect = [cx * C, cy * C, (cx + 1) * C, (cy + 1) * C];
@@ -102,6 +102,7 @@ export function generateChunk(ctx: GeoContext, cx: number, cy: number): ChunkDat
   // type's radius rolled lower. Radii stay well inside the site neighborhood,
   // so every chunk reaches the same verdict.
   const landmarks: Landmark[] = [];
+  const landmarkLots = new Set<number>();
   const picks = ds.sites.map((s) => pickLandmark(seed, s.type, s.id));
   const SPACING = PROCGEN.landmarkSpacingMeters as Record<string, number>;
   ds.sites.forEach((s, si) => {
@@ -119,12 +120,30 @@ export function generateChunk(ctx: GeoContext, cx: number, cy: number): ChunkDat
       if (d < bestD) { bestD = d; best = i; }
     });
     if (best < 0) return;
-    const [lx, ly] = ringCentroid(lots[best]!);
-    const size = pick === 'radio_tower' ? { coverage: 0.3, maxSide: 14 } : pick === 'gas_station' ? { coverage: 0.5, maxSide: 26 } : { coverage: 0.85, maxSide: 90 };
-    const b = pick === 'helipad' ? null : buildingFor(seed, lots[best]!, lotTypes[best]!, chunkR, size);
-    buildings[best] = b ? { ...b, landmark: pick } : null;
-    landmarks.push({ id: s.id, type: pick, x: lx, y: ly, districtType: s.type });
+    placeLandmark(best, pick, s.id, s.type);
   });
+  function placeLandmark(lot: number, type: LandmarkType, id: number, districtType: DistrictType) {
+    const [lx, ly] = ringCentroid(lots[lot]!);
+    const size = type === 'radio_tower' ? { coverage: 0.3, maxSide: 14 } : type === 'gas_station' ? { coverage: 0.5, maxSide: 26 } : { coverage: 0.85, maxSide: 90 };
+    const b = type === 'helipad' ? null : buildingFor(seed, lots[lot]!, lotTypes[lot]!, chunkR, size);
+    buildings[lot] = b ? { ...b, landmark: type } : null;
+    landmarkLots.add(lot);
+    landmarks.push({ id, type, x: lx, y: ly, districtType });
+  }
+  // Sites a campaign stage requires (e.g. Forks' hospital): the largest free
+  // lot near the requested point, chosen by the one chunk containing the point.
+  for (const f of forced) {
+    if (!rectContains(rect, f.x, f.y)) continue;
+    let best = -1, bestScore = Infinity;
+    lots.forEach((lot, i) => {
+      const area = Math.abs(ringArea(lot));
+      if (landmarkLots.has(i) || area < PROCGEN.forcedSiteMinLotM2) return;
+      const [x, y] = ringCentroid(lot);
+      const score = Math.hypot(x - f.x, y - f.y) - Math.sqrt(area); // near, and big
+      if (score < bestScore) { bestScore = score; best = i; }
+    });
+    if (best >= 0) placeLandmark(best, f.type, (unit(seed, SALT.landmark, Math.round(f.x), Math.round(f.y), 1) * 1e9) | 0, typeAt(f.x, f.y));
+  }
   for (const r of fixed) {
     if (r.kind !== 'ferry') continue;
     for (const p of [r.pts[0]!, r.pts[r.pts.length - 1]!]) {

@@ -80,7 +80,7 @@ export class ChunkStore {
     this.cache.clear();
     this.inflight.clear();
     this.failed.clear();
-    for (const s of this.workers) { s.jobs.clear(); s.w.postMessage({ type: 'region', mask: region?.mask ?? null, rv: this.rv } satisfies WorkerIn); }
+    for (const s of this.workers) { s.jobs.clear(); s.w.postMessage({ type: 'region', mask: region?.mask ?? null, forced: region?.forced ?? [], rv: this.rv } satisfies WorkerIn); }
     this.regionChunks = region?.chunks ?? [];
     this.regionSet = new Set(this.regionChunks.map(([x, y]) => chunkKey(x, y)));
     this.pregen = this.regionChunks.length > 0 && this.regionChunks.length <= CAMPAIGN.pregenMaxChunks;

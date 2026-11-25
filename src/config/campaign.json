@@ -10,6 +10,9 @@
       "marginMeters": 1500,
       "next": [
         "montesano"
+      ],
+      "sites": [
+        "hospital"
       ]
     },
     {
@@ -21,7 +24,8 @@
       "marginMeters": 1500,
       "next": [
         "olympia"
-      ]
+      ],
+      "sites": []
     },
     {
       "id": "olympia",
@@ -33,7 +37,8 @@
       "next": [
         "tacoma",
         "centralia"
-      ]
+      ],
+      "sites": []
     },
     {
       "id": "tacoma",
@@ -44,7 +49,8 @@
       "marginMeters": 500,
       "next": [
         "seattle"
-      ]
+      ],
+      "sites": []
     },
     {
       "id": "seattle",
@@ -55,7 +61,8 @@
       "marginMeters": 500,
       "next": [
         "everett"
-      ]
+      ],
+      "sites": []
     },
     {
       "id": "everett",
@@ -66,7 +73,8 @@
       "marginMeters": 500,
       "next": [
         "mount-vernon"
-      ]
+      ],
+      "sites": []
     },
     {
       "id": "mount-vernon",
@@ -77,7 +85,8 @@
       "marginMeters": 800,
       "next": [
         "bellingham"
-      ]
+      ],
+      "sites": []
     },
     {
       "id": "bellingham",
@@ -86,7 +95,8 @@
       "kind": "place",
       "name": "Bellingham",
       "marginMeters": 800,
-      "next": []
+      "next": [],
+      "sites": []
     },
     {
       "id": "centralia",
@@ -97,7 +107,8 @@
       "marginMeters": 1500,
       "next": [
         "longview"
-      ]
+      ],
+      "sites": []
     },
     {
       "id": "longview",
@@ -108,7 +119,8 @@
       "marginMeters": 800,
       "next": [
         "vancouver"
-      ]
+      ],
+      "sites": []
     },
     {
       "id": "vancouver",
@@ -117,7 +129,8 @@
       "kind": "place",
       "name": "Vancouver",
       "marginMeters": 500,
-      "next": []
+      "next": [],
+      "sites": []
     }
   ],
   "pregenMaxChunks": 500,

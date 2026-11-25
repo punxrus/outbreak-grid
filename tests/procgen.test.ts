@@ -122,3 +122,17 @@ describe('nav export', () => {
     expect(grid.filter((v) => v === 3).length).toBeGreaterThan(1000);
   }, 30_000);
 });
+
+describe('forced campaign sites', () => {
+  it('places a required hospital near the Forks town center', () => {
+    const at = { x: -284900, y: 67691 }; // Forks Census internal point
+    const cx = Math.floor(at.x / 1000), cy = Math.floor(at.y / 1000);
+    const c = generateChunk(ctx, cx, cy, [{ type: 'hospital', ...at }]);
+    const h = c.landmarks.filter((l) => l.type === 'hospital');
+    expect(h.length).toBeGreaterThanOrEqual(1);
+    expect(Math.min(...h.map((l) => Math.hypot(l.x - at.x, l.y - at.y)))).toBeLessThan(500);
+    expect(c.buildings.some((b) => b.landmark === 'hospital')).toBe(true);
+    // a neighbor chunk does not place it again
+    expect(generateChunk(ctx, cx + 1, cy, [{ type: 'hospital', ...at }]).landmarks.some((l) => l.type === 'hospital' && Math.hypot(l.x - at.x, l.y - at.y) < 500)).toBe(false);
+  }, 30_000);
+});

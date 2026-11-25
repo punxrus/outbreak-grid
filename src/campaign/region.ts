@@ -3,6 +3,7 @@ import PROCGEN from '../config/procgen.json';
 import { fillPolygon, makeGrid, polygonsOf, type Grid } from '../geo/rasterize';
 import type { TacticalLayers } from '../geo/types';
 import { bboxOf, clipPolylineToRect, clipRingToRect, rectsOverlap, type Pt, type Rect } from '../procgen/geom';
+import type { ForcedSite, LandmarkType } from '../procgen/types';
 
 export type Stage = (typeof CAMPAIGN.stages)[number];
 export const STAGES: Stage[] = CAMPAIGN.stages;
@@ -20,6 +21,8 @@ export interface Region {
   /** Chunks that touch the region, nearest to its center first. */
   chunks: [number, number][];
   center: Pt;
+  /** Sites the stage requires, anchored at the place's Census center. */
+  forced: ForcedSite[];
 }
 
 export function stageById(id: string | null | undefined): Stage {
@@ -27,7 +30,7 @@ export function stageById(id: string | null | undefined): Stage {
 }
 
 /** Resolve a stage to its real boundary and build the membership mask + chunk list. */
-export function buildRegion(stage: Stage, t: TacticalLayers): Region | null {
+export function buildRegion(stage: Stage, t: TacticalLayers, anchor?: Pt): Region | null {
   const feats = stage.kind === 'county'
     ? t.counties.features.filter((f) => f.properties.NAME === stage.name)
     : t.places.features.filter((f) => f.properties.NAME === stage.name).sort((a, b) => b.properties.pop - a.properties.pop).slice(0, 1);
@@ -56,7 +59,9 @@ export function buildRegion(stage: Stage, t: TacticalLayers): Region | null {
   }
   const center: Pt = [(b[0] + b[2]) / 2, (b[1] + b[3]) / 2];
   chunks.sort((p, q) => dist2(p, center, C) - dist2(q, center, C));
-  return { stage, polygons, bbox: [grid.minX, grid.minY, grid.maxX, grid.maxY], mask: { grid, mask }, chunks, center };
+  const at = anchor ?? center;
+  const forced = (stage.sites as string[]).map((type) => ({ type: type as LandmarkType, x: at[0], y: at[1] }));
+  return { stage, polygons, bbox: [grid.minX, grid.minY, grid.maxX, grid.maxY], mask: { grid, mask }, chunks, center, forced };
 }
 
 const dist2 = (p: [number, number], c: Pt, C: number) => ((p[0] + 0.5) * C - c[0]) ** 2 + ((p[1] + 0.5) * C - c[1]) ** 2;

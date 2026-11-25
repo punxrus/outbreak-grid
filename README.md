@@ -109,6 +109,15 @@ production. Campaign state lives in browser storage until the save system (M7).
 For testing, **Secure region (dev)** stands in for winning a stage, and
 `?dev=1` unlocks every stage.
 
+**Required sites:** a stage can list sites that must exist (`"sites"` in
+`campaign.json`; Forks: `["hospital"]`). Each one goes on the best large lot
+near the place's Census center, on top of the usual random sites. Fuel is
+deliberately not guaranteed.
+
+**Design direction (not built yet):** the player starts with a fixed set of
+resources and has to split them up to fight the outbreak. The resource list is
+still to be agreed.
+
 A region is the real boundary (city limits or county, from the pack) plus a
 margin, rasterized to a mask (`src/campaign/region.ts`). The mask decides which
 chunks to generate, and the worker uses it to trim content to the region.

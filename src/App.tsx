@@ -83,7 +83,11 @@ function Game({ pack }: { pack: RegionPack }) {
       setLoadingTactical(false);
     });
   }, [pack]);
-  const region = useMemo(() => (tactical ? buildRegion(stage, tactical) : null), [stage, tactical]);
+  const region = useMemo(() => {
+    if (!tactical) return null;
+    const place = pack.places.filter((p) => p.name === stage.name).sort((a, b) => b.pop - a.pop)[0];
+    return buildRegion(stage, tactical, place ? [place.x, place.y] : undefined);
+  }, [stage, tactical, pack]);
   const regionGeo = useMemo<RegionGeo | null>(() => {
     if (!region || !tactical) return null;
     const m = CAMPAIGN.displayMarginMeters, b = region.bbox;
