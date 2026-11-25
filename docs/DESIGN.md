@@ -28,8 +28,8 @@ the repo; everything else is direction for upcoming milestones.
 - **Core loop: place, then auto-battle.** In the prep phase the player spends
   the pool by placing squads on the map. Then the battle runs on its own:
   zombies spread, civilians flee, units fight by their own rules.
-- **Fixed starting resources, split to fight the outbreak:** Survivors, Ammo,
-  Fuel, Medical, Food (`campaign.json` → `startingResources`).
+- **Fixed starting resources, split to fight the outbreak:** Money, Survivors,
+  Ammo, Fuel, Medical, Food (`campaign.json` → `startingResources`).
 - **Outcome is the percentage of survivors saved** once the zombies are cleared.
   Below the minimum (placeholder 50%) the stage is lost even if every zombie
   dies. Grades: Flawless ≥90%, Decisive ≥70%, Secured ≥50%.
@@ -37,14 +37,18 @@ the repo; everything else is direction for upcoming milestones.
 - **Hunters:** rural locals recruited from survivors who bring their hunting
   skills. They free-roam the whole map tracking down outlying zombies (no leash),
   with long rifles but light armor.
-- **Police stations produce police officers.**
+- **Police stations produce one officer every 30 s** (up to 8). Officers patrol
+  around their station and chase down zombies they find.
+- **Starting roster (Forks):** limited militia (4 squads) and at most 2 hunter
+  squads. Paratroopers, EOD, mortars, artillery, drones and helicopters are not
+  available at the start; they unlock later in the campaign.
 - **Drop-ins:** specific weapon types and military personnel can be dropped
   into areas:
   - Paratroopers
   - EOD (explosive ordnance disposal)
   - Mortar teams
   - Heavy artillery
-  - Drone squads
+  - Drone squads (gun drones, plus FPV kamikaze drones with explosives)
   - Attack helicopters
 
 ## Look
@@ -64,7 +68,21 @@ the repo; everything else is direction for upcoming milestones.
   | Mortar team | brass `#c9a227` |
   | Heavy artillery | magenta `#ff4fd8` |
   | Drone squad | violet `#b388ff` |
+  | FPV drone (launched by drone squads) | pale violet `#e6ccff` |
   | Attack helicopter | red `#ff3b3b` |
 
   Every unit type has its own color (`src/config/units.json`). None is close to
   zombie green or the cyan wireframe.
+
+## Safe zones
+
+- **The core of a defense:** a secure area survivors run to, and a place to defend.
+- **Drawing:** click points around an area and close the loop.
+- **Walls cost money per meter.** Where the line passes through a building, the
+  building takes the place of that wall section and costs nothing.
+- **Gates cost money each.** People pass through them; zombies don't.
+- **In battle:** survivors flock to the zone (running while far away), zombies
+  pile up against the wall nearest the people inside, and wall sections lose
+  hit points until they breach.
+- **Gunfire is visible** as tracers in the shooter's color. Drone teams also
+  launch FPV kamikaze drones.

@@ -18,6 +18,10 @@
       "zones": [],
       "outbreak": {
         "zombies": 25
+      },
+      "roster": {
+        "militia": 4,
+        "hunter": 2
       }
     },
     {
@@ -215,10 +219,12 @@
   "displayMarginMeters": 8000,
   "maskMaxCells": 4000000,
   "startingResources": {
+    "money": 20000,
     "survivors": 40,
     "ammo": 700,
     "fuel": 60,
     "medical": 20,
     "food": 100
-  }
+  },
+  "_rosterDoc": "Per stage: unit -> max squads. Stages without a roster get every placeable unit (placeholder until unlocks are designed)."
 }

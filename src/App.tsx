@@ -12,12 +12,13 @@ import type { Place, TacticalLayers } from './geo/types';
 import { GameMap, type FlyTarget } from './render/GameMap';
 import type { Lod, RegionGeo } from './render/layers';
 import { buildProcLayers } from './render/procLayers';
-import { battleLayers, placementLayers } from './render/battleLayers';
+import { battleLayers, placementLayers, zoneLayers } from './render/battleLayers';
+import { snapToWall, zoneCost, type SafeZone } from './sim/walls';
 import UNITS from './config/units.json';
 import { inRegion } from './campaign/region';
 import { useBattle } from './sim/useBattle';
 import type { Placement, UnitKind } from './sim/types';
-import { BattlePanel, affordable, pct, type Resources } from './ui/BattlePanel';
+import { BattlePanel, affordable, pct, type Resources, type Tool } from './ui/BattlePanel';
 import { fitBounds } from './render/view';
 import { PlaceSearch } from './ui/PlaceSearch';
 
@@ -156,39 +157,105 @@ function Game({ pack }: { pack: RegionPack }) {
   const [phase, setPhase] = useState<'prep' | 'battle'>('prep');
   const [pool, setPool] = useState<Resources>({ ...CAMPAIGN.startingResources });
   const [placements, setPlacements] = useState<Placement[]>([]);
-  const [armed, setArmed] = useState<UnitKind | null>(null);
+  const [armed, setArmed] = useState<Tool | null>(null);
+  const [zones, setZones] = useState<SafeZone[]>([]);
+  const [draft, setDraft] = useState<[number, number][] | null>(null);
+  /** Undo history across units, zones and gates. */
+  const [history, setHistory] = useState<{ type: 'unit' | 'zone' | 'gate'; refund: Resources }[]>([]);
   useEffect(() => { // a new stage starts a fresh deployment
     battle.stop();
     setPhase('prep'); setPool({ ...CAMPAIGN.startingResources }); setPlacements([]); setArmed(null);
+    setZones([]); setDraft(null); setHistory([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stage.id]);
   const world = useMemo(() => (genComplete && store && region ? store.world(region) : null), [genComplete, store, region]);
   const unitSpec = (k: string) => (UNITS.units as Record<string, { cost?: Resources; flies?: boolean }>)[k]!;
 
-  const onMapClick = useCallback(([x, y]: [number, number]) => {
-    if (phase !== 'prep' || !armed || !world || !region) return;
-    const spec = unitSpec(armed);
-    if (!affordable(pool, armed) || !inRegion(region.mask, x, y)) return;
-    if (!spec.flies) { // ground units need open ground or road
-      const c = Math.floor((x - world.minX) / world.cell), r = Math.floor((world.maxY - y) / world.cell);
-      const v = world.grid[r * world.width + c];
-      if (v !== 1 && v !== 2) return;
-    }
+  const spend = (cost: Resources, type: 'unit' | 'zone' | 'gate') => {
     const next = { ...pool };
-    for (const [res, n] of Object.entries(spec.cost ?? {})) next[res] = (next[res] ?? 0) - n;
+    for (const [res, n] of Object.entries(cost)) next[res] = (next[res] ?? 0) - n;
     setPool(next);
+    setHistory((h) => [...h, { type, refund: cost }]);
+    return next;
+  };
+  const canPay = (cost: Resources) => Object.entries(cost).every(([r, n]) => (pool[r] ?? 0) >= n);
+  const pxToM = 1 / 2 ** zoom; // meters per screen pixel
+
+  /** Close the zone being drawn: build its walls if affordable. */
+  const closeDraft = useCallback(() => {
+    if (!draft || draft.length < 3 || !world) return;
+    const z: SafeZone = { ring: draft, gates: [] };
+    const cost = { money: zoneCost(world, z).money };
+    if (!canPay(cost)) return; // too expensive: keep drawing or undo points
+    spend(cost, 'zone');
+    setZones((zs) => [...zs, z]);
+    setDraft(null);
+    setArmed('gate');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft, world, pool]);
+
+  const onMapClick = useCallback(([cx, cy]: [number, number]) => {
+    let x = cx, y = cy;
+    if (phase !== 'prep' || !armed || !world || !region) return;
+    if (armed === 'zone') {
+      if (!inRegion(region.mask, x, y)) return;
+      if (draft && draft.length >= 3 && Math.hypot(x - draft[0]![0], y - draft[0]![1]) < 14 * pxToM) { closeDraft(); return; }
+      setDraft((d) => [...(d ?? []), [x, y]]);
+      return;
+    }
+    if (armed === 'gate') {
+      const cost = { money: UNITS.walls.gateCost };
+      if (!canPay(cost)) return;
+      for (let zi = 0; zi < zones.length; zi++) {
+        const p = snapToWall(zones[zi]!.ring, x, y, 16 * pxToM);
+        if (!p) continue;
+        spend(cost, 'gate');
+        setZones((zs) => zs.map((z, k) => (k === zi ? { ...z, gates: [...z.gates, p] } : z)));
+        return;
+      }
+      return;
+    }
+    const spec = unitSpec(armed);
+    const roster = (stage as { roster?: Record<string, number> }).roster;
+    if (roster && placements.filter((q) => q.kind === armed).length >= (roster[armed] ?? 0)) return;
+    if (!affordable(pool, armed) || !inRegion(region.mask, x, y)) return;
+    if (!spec.flies) { // ground units need open ground or road: snap to the nearest within ~24 m
+      const c0 = Math.floor((x - world.minX) / world.cell), r0 = Math.floor((world.maxY - y) / world.cell);
+      let best: [number, number] | null = null, bd = Infinity;
+      for (let dr = -6; dr <= 6; dr++) for (let dc = -6; dc <= 6; dc++) {
+        const r = r0 + dr, c = c0 + dc;
+        if (r < 0 || c < 0 || r >= world.height || c >= world.width) continue;
+        const v = world.grid[r * world.width + c];
+        if ((v === 1 || v === 2) && dr * dr + dc * dc < bd) { bd = dr * dr + dc * dc; best = [world.minX + (c + 0.5) * world.cell, world.maxY - (r + 0.5) * world.cell]; }
+      }
+      if (!best) return;
+      [x, y] = best;
+    }
+    const next = spend(spec.cost ?? {}, 'unit');
     setPlacements((ps) => [...ps, { kind: armed, x, y }]);
-    if (!affordable(next, armed)) setArmed(null);
-  }, [phase, armed, world, region, pool]);
+    if (!affordable(next, armed) || (roster && placements.filter((q) => q.kind === armed).length + 1 >= (roster[armed] ?? 0))) setArmed(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, armed, world, region, pool, draft, zones, pxToM, closeDraft, stage, placements]);
 
   const undo = () => {
-    const last = placements[placements.length - 1];
+    if (draft && draft.length) { setDraft(draft.length > 1 ? draft.slice(0, -1) : null); return; }
+    const last = history[history.length - 1];
     if (!last) return;
     const next = { ...pool };
-    for (const [res, n] of Object.entries(unitSpec(last.kind).cost ?? {})) next[res] = (next[res] ?? 0) + n;
+    for (const [res, n] of Object.entries(last.refund)) next[res] = (next[res] ?? 0) + n;
     setPool(next);
-    setPlacements(placements.slice(0, -1));
+    setHistory(history.slice(0, -1));
+    if (last.type === 'unit') setPlacements((ps) => ps.slice(0, -1));
+    else if (last.type === 'zone') setZones((zs) => zs.slice(0, -1));
+    else setZones((zs) => { const z = zs[zs.length - 1]; return z ? [...zs.slice(0, -1), { ...z, gates: z.gates.slice(0, -1) }] : zs; });
   };
+
+  // live wall cost while drawing (including the closing edge back to the start)
+  const draftCost = useMemo(() => {
+    if (!draft || !world || armed !== 'zone') return null;
+    const ring = hover ? [...draft, hover] : draft;
+    return ring.length >= 2 ? zoneCost(world, { ring, gates: [] }).money : 0;
+  }, [draft, hover, world, armed]);
 
   const people = useMemo(() => {
     const names = [stage.name, ...(stage.extraPlaces as string[])];
@@ -202,6 +269,7 @@ function Game({ pack }: { pack: RegionPack }) {
       seed: (PROCGEN.seed * 31 + [...stage.id].reduce((a, ch) => a * 33 + ch.charCodeAt(0), 7)) >>> 0,
       world,
       placements,
+      zones,
       survivors: Math.round(people / UNITS.people.perSurvivorDot),
       zombies: (stage as { outbreak?: { zombies: number } }).outbreak?.zombies ?? 40,
       // each squad brings the ammo it was issued
@@ -212,8 +280,10 @@ function Game({ pack }: { pack: RegionPack }) {
   const backToPrep = () => { battle.stop(); setPhase('prep'); };
 
   const overlay = useMemo(
-    () => (phase === 'prep' ? placementLayers(placements) : battleLayers(battle.frame, battle.flashes, performance.now())),
-    [phase, placements, battle.frame, battle.flashes],
+    () => (phase === 'prep'
+      ? [...zoneLayers(zones, draft, armed === 'zone' ? hover : null), ...placementLayers(placements)]
+      : [...zoneLayers(zones, null, null).slice(0, 1), ...battleLayers(battle.frame, battle.flashes, performance.now(), battle.tracers, battle.walls)]),
+    [phase, placements, zones, draft, armed, hover, battle.frame, battle.flashes, battle.tracers, battle.walls],
   );
 
   /** Snapshot the region as a holding: the asset that outlives the visit. */
@@ -265,7 +335,8 @@ function Game({ pack }: { pack: RegionPack }) {
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement) return;
       const k = e.key.toLowerCase();
-      if (k === 'escape') { setArmed(null); return; }
+      if (k === 'escape') { if (draftRef.current) setDraft(null); else setArmed(null); return; }
+      if (k === 'enter') { closeRef.current(); return; }
       if (k === 'd') setShowDensity((v) => !v);
       else if (k === 'g') setShowDistricts((v) => !v);
       else if (k === 'l') setLodMode((m) => (m === 'auto' ? 'strategic' : m === 'strategic' ? 'tactical' : 'auto'));
@@ -276,6 +347,8 @@ function Game({ pack }: { pack: RegionPack }) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [fit, fitRegion]);
+  const draftRef = useRef(draft); draftRef.current = draft;
+  const closeRef = useRef(closeDraft); closeRef.current = closeDraft;
 
   const metersPerPx = 1 / 2 ** zoom;
   const grid = lod === 'tactical' && fineDensity ? fineDensity : pack.coarseDensity;
@@ -412,6 +485,9 @@ function Game({ pack }: { pack: RegionPack }) {
         pool={pool}
         placements={placements}
         armed={armed}
+        draftCost={draftCost}
+        hasZone={zones.length > 0}
+        roster={(stage as { roster?: Record<string, number> }).roster ?? null}
         stats={battle.stats}
         speed={battle.speed}
         onArm={setArmed}
@@ -427,7 +503,7 @@ function Game({ pack }: { pack: RegionPack }) {
             <h2 className={battle.stats.outcome.secured ? 'win' : 'loss'}>{battle.stats.outcome.secured ? `${stage.label.toUpperCase()} SECURED` : 'OUTBREAK NOT CONTAINED'}</h2>
             <div className="big">{pct(battle.stats)}% survivors saved</div>
             <p>{battle.stats.survivors} of {battle.stats.survivorsStart} survivors · {battle.stats.killed} zombies destroyed · grade <b>{battle.stats.outcome.grade}</b></p>
-            {battle.stats.zombies > 0 && battle.stats.outcome.secured && <p className="muted">Time ran out with {battle.stats.zombies} zombies still out there: scored on survivors saved.</p>}
+            {battle.stats.zombies > 0 && battle.stats.outcome.secured && <p className="muted">An hour in with {battle.stats.zombies} zombies still out there: scored on survivors saved.</p>}
             {!battle.stats.outcome.secured && <p className="muted">You need at least {UNITS.outcome.securedMinSavedPct}% of survivors alive when the last zombie falls.</p>}
             <div className="row" style={{ display: 'flex', gap: 8 }}>
               {battle.stats.outcome.secured && !isSecured(campaign, stage.id) && (

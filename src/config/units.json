@@ -18,7 +18,8 @@
       "color": "#ffffff",
       "hp": 1,
       "speed": 1.3,
-      "sight": 25
+      "sight": 25,
+      "travelSpeed": 2.5
     },
     "militia": {
       "label": "Militia",
@@ -45,7 +46,9 @@
       "damage": 1,
       "cooldown": 1.2,
       "accuracy": 0.7,
-      "hunt": 300
+      "hunt": 300,
+      "patrol": 600,
+      "ownAmmo": true
     },
     "hunter": {
       "label": "Hunters",
@@ -147,6 +150,11 @@
       "cost": {
         "fuel": 6,
         "ammo": 60
+      },
+      "fpv": {
+        "stock": 8,
+        "every": 10,
+        "range": 600
       }
     },
     "helicopter": {
@@ -167,6 +175,15 @@
         "fuel": 40,
         "ammo": 250
       }
+    },
+    "fpv": {
+      "label": "FPV drone",
+      "color": "#e6ccff",
+      "hp": 1,
+      "speed": 22,
+      "flies": true,
+      "blast": 9,
+      "damage": 6
     }
   },
   "placeable": [
@@ -180,8 +197,8 @@
     "helicopter"
   ],
   "policeStation": {
-    "every": 45,
-    "batch": 2,
+    "every": 30,
+    "batch": 1,
     "max": 8
   },
   "people": {
@@ -208,5 +225,12 @@
       }
     ]
   },
-  "tick": 0.1
+  "tick": 0.1,
+  "walls": {
+    "costPerMeter": 15,
+    "gateCost": 400,
+    "gateWidthMeters": 8,
+    "hp": 250,
+    "zombieDamagePerSecond": 1.0
+  }
 }

@@ -8,7 +8,7 @@ export interface BattleWorld {
 }
 
 export type UnitKind =
-  | 'zombie' | 'survivor' | 'militia' | 'police' | 'hunter' | 'paratrooper' | 'eod' | 'mortar' | 'artillery' | 'drone' | 'helicopter';
+  | 'zombie' | 'survivor' | 'militia' | 'police' | 'hunter' | 'paratrooper' | 'eod' | 'mortar' | 'artillery' | 'drone' | 'fpv' | 'helicopter';
 
 export interface Placement { kind: UnitKind; x: number; y: number }
 
@@ -19,6 +19,10 @@ export interface BattleSetup {
   survivors: number; // dots
   zombies: number; // initial outbreak
   ammo: number;
+  /** Player-drawn safe zones: walls (buildings stand in for wall) and gates. */
+  zones?: { ring: [number, number][]; gates: [number, number][] }[];
+  /** Never judge an outcome (tests, sandbox). */
+  endless?: boolean;
 }
 
 export interface BattleStats {

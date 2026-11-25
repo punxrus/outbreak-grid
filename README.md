@@ -91,16 +91,24 @@ Design decisions from conversations are collected in [`docs/DESIGN.md`](docs/DES
 
 ## Playing a stage: deploy, then auto-battle
 
-1. **Deploy:** spend the starting pool (survivors, ammo, fuel, medical, food) by
-   picking a unit and clicking the map. Ground units need open ground or road.
+1. **Deploy:** spend the starting pool (money, survivors, ammo, fuel, medical,
+   food). Draw a **safe zone** (click points, close the loop): walls cost money
+   per meter, and buildings in the wall's path are free. Add **gates**: people pass,
+   zombies don't. Place units by picking one and clicking the map; ground units
+   snap to the nearest open ground. Forks starts with militia (4 squads) and
+   hunters (2 squads) only.
 2. **Battle:** press Start. The battle (`src/sim/engine.ts`, in a worker) plays
    itself out. Zombies follow a flow field over the real walk grid toward people,
-   survivors flee toward squads, police stations produce officers, hunters roam
-   the whole map, and riflemen hunt within a leash of where you placed them.
+   survivors run for the safe zone (or toward squads), zombies batter the wall
+   nearest the people inside until it breaches, police stations produce an
+   officer every 30 s who patrols and hunts, hunters roam the whole map, riflemen
+   hunt within a leash of where you placed them, and drone teams launch FPV
+   kamikaze drones. Every shot shows as a tracer in the shooter's color.
    Mortars and artillery pick zombie clusters and avoid shelling people.
    Explosions hurt everyone in the blast.
 3. **Outcome:** scored on the **percentage of survivors saved** when the last
-   zombie falls (or when the 20-minute limit is reached). At least 50% secures
+   zombie falls. A growing outbreak eventually drops survivors below the minimum,
+   so clearing the zombies is how you win (a 60-minute stalemate guard scores whatever is left). At least 50% secures
    the region. Grades: Flawless ≥90%, Decisive ≥70%, Secured ≥50%.
 
 All unit stats, costs and colors live in `src/config/units.json`. To run a

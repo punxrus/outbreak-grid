@@ -92,7 +92,7 @@ button:disabled { opacity: 0.45; cursor: default; }
   border: 1px solid var(--panel-border); border-radius: 3px; z-index: 3; display: flex; flex-direction: column; gap: 8px;
 }
 .battle h3 { margin: 0; font-size: 12px; letter-spacing: 0.14em; color: var(--accent); }
-.battle .pool { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
+.battle .pool { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px 8px; }
 .battle .res { display: flex; flex-direction: column; font-size: 14px; }
 .battle .res label { font-size: 10px; letter-spacing: 0.08em; color: var(--muted); }
 .battle .units { display: flex; flex-direction: column; gap: 4px; }
@@ -110,3 +110,6 @@ button:disabled { opacity: 0.45; cursor: default; }
 .outcome .card h2.win { color: var(--green); }
 .outcome .card h2.loss { color: #ff6b5a; }
 .outcome .big { font-size: 34px; font-weight: 700; margin: 6px 0; }
+
+.battle .build { border-bottom: 1px solid var(--panel-border); padding-bottom: 6px; }
+.battle { width: 320px; max-height: calc(100% - 110px); overflow: auto; }
